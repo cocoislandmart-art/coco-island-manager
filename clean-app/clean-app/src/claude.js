@@ -6,7 +6,12 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || sk-ant-api03-bKAXo7vy
 export async function callClaude({ system, userContent, maxTokens = 1000 }) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { 
+  "Content-Type": "application/json",
+  "x-api-key": ANTHROPIC_API_KEY,
+  "anthropic-version": "2023-06-01",
+  "anthropic-dangerous-direct-browser-access": "true"
+},
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
       max_tokens: maxTokens,
