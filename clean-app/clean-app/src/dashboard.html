@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Coco Island Mart Manager</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0A0A0F;color:#E2DDD6;font-family:sans-serif}
+textarea,input{color-scheme:dark}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#13131A}::-webkit-scrollbar-thumb{background:#2E2E40;border-radius:3px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState} = React;
+
+// ── API KEY - 在这里填入你的 Anthropic API Key ──────────────────
+const ANTHROPIC_API_KEY = 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";
+
+// ── COLORS ────────────────────────────────────────────────────────
+const C = {
+  bg:"#0A0A0F", surface:"#13131A", border:"#1E1E2A", borderHover:"#2E2E40",
+  text:"#E2DDD6", muted:"#5A5A6E", accent:"#6EE7B7", accentDim:"#1A3D30",
+  warn:"#FCD34D", warnDim:"#3D3010", danger:"#F87171", dangerDim:"#3D1010",
+  blue:"#60A5FA", blueDim:"#102040",
+};
+
+// ── PROMPTS ───────────────────────────────────────────────────────
+const EMAIL_SYSTEM = `你是一个专业的电商客服助手，代表 Coco Island Mart 回复客户邮件。识别问题类型并给出专业、友好的回复。
+1. 订单状态/物流查询 - 告知1个工作日内核实，引导"我的订单"页面
+2. 退换货申请 - 确认收到，说明需提供订单号+照片，3个工作日处理
+3. 商品咨询 - 友好回答，无法确认则告知跟进
+4. 投诉/差评 - 真诚道歉，高度重视，承诺跟进
+在回复最前面用【】标注类型：订单状态/物流、退换货申请、商品咨询、投诉/差评、其他
+语言与客户一致，简洁不超200字，署名"客服团队 Customer Service"`;
+
+const PRODUCT_SYSTEM = `你是专业的电商产品文案师。根据产品信息生成吸引人的文案。
+格式：【产品标题】15字内\n【产品卖点】3个核心卖点\n【产品描述】100-150字，中英双语，用---分隔\n【SEO标签】5个关键词\n语气：专业、吸引人、突出价值`;
+
+const MARKETING_SYSTEM = `你是电商营销文案专家，为 Coco Island Mart 生成本地配送推广文案。要求：突出当日/次日达优势，语气亲切，中英双语。格式：先写中文版，再写English version，用---分隔。`;
+
+async function callClaude({system, userContent}) {
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        system,
+        messages: [{role:"user", content: userContent}]
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return data.content?.[0]?.text || "";
+  } catch(e) {
+    throw new Error(e.message);
+  }
+}
+
+// ── SHARED COMPONENTS ─────────────────────────────────────────────
+function Btn({children, onClick, variant="primary", disabled, style={}}) {
+  const base = {border:"none", borderRadius:6, cursor:disabled?"not-allowed":"pointer", fontSize:12, letterSpacing:.5, padding:"8px 16px", transition:"all .15s", fontWeight:500};
+  const v = {
+    primary: {background:disabled?C.border:C.accent, color:disabled?C.muted:"#0A0A0F"},
+    ghost: {background:"transparent", color:C.muted, border:`1px solid ${C.border}`}
+  };
+  return <button onClick={onClick} disabled={disabled} style={{...base, ...v[variant], ...style}}>{children}</button>;
+}
+
+function Card({children, style={}}) {
+  return <div style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:20, ...style}}>{children}</div>;
+}
+
+function Label({zh, en}) {
+  return <span style={{fontSize:11, color:C.muted, letterSpacing:2, textTransform:"uppercase"}}>{zh} <span style={{opacity:.5}}>/ {en}</span></span>;
+}
+
+function TA({value, onChange, placeholder, rows=4}) {
+  const [f,setF] = useState(false);
+  return <textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} rows={rows}
+    onFocus={()=>setF(true)} onBlur={()=>setF(false)}
+    style={{width:"100%", background:C.bg, border:`1px solid ${f?C.borderHover:C.border}`, borderRadius:8, padding:"12px", color:C.text, fontSize:13, resize:"vertical", outline:"none", lineHeight:1.6, boxSizing:"border-box", transition:"border-color .15s"}}/>;
+}
+
+function CopyBtn({text}) {
+  const [c,setC] = useState(false);
+  return <Btn variant="ghost" style={{fontSize:11, padding:"4px 12px"}}
+    onClick={()=>{navigator.clipboard.writeText(text); setC(true); setTimeout(()=>setC(false),2000)}}>
+    {c?"✓ 已复制":"复制"}
+  </Btn>;
+}
+
+// ── TABS ──────────────────────────────────────────────────────────
+const tabs = [
+  {id:"overview", zh:"总览", en:"Overview", icon:"◈"},
+  {id:"email", zh:"自动回邮", en:"Auto Email", icon:"✉"},
+  {id:"delivery", zh:"本地配送", en:"Local Delivery", icon:"⊛"},
+  {id:"marketing", zh:"推广工具", en:"Marketing", icon:"◉"},
+  {id:"products", zh:"新产品", en:"Products", icon:"⊕"},
+];
+
+// ── OVERVIEW ──────────────────────────────────────────────────────
+function Overview({setTab}) {
+  const stats = [
+    {zh:"今日订单", en:"Orders Today", value:"24", delta:"+12%", color:C.accent},
+    {zh:"本地配送", en:"Local Deliveries", value:"8", delta:"+3", color:C.blue},
+    {zh:"待回邮件", en:"Pending Emails", value:"5", delta:"-2", color:C.warn},
+    {zh:"推广触达", en:"Marketing Reach", value:"1.2k", delta:"+8%", color:C.accent},
+  ];
+  return <div>
+    <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:24}}>
+      {stats.map((s,i) => <Card key={i}>
+        <div style={{fontSize:11, color:C.muted, marginBottom:8}}>{s.zh} / {s.en}</div>
+        <div style={{fontSize:28, color:s.color, fontFamily:"Georgia,serif", lineHeight:1}}>{s.value}</div>
+        <div style={{fontSize:11, color:C.muted, marginTop:4}}>{s.delta} vs yesterday</div>
+      </Card>)}
+    </div>
+    <div style={{marginBottom:12}}><Label zh="快速操作" en="Quick Actions"/></div>
+    <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10}}>
+      {[
+        {zh:"回复客户邮件", en:"Reply Emails", tab:"email", icon:"✉", color:C.blue},
+        {zh:"管理配送区域", en:"Delivery Zones", tab:"delivery", icon:"⊛", color:C.accent},
+        {zh:"生成推广文案", en:"Generate Copy", tab:"marketing", icon:"◉", color:C.warn},
+        {zh:"加新产品", en:"Add Product", tab:"products", icon:"⊕", color:"#A78BFA"},
+      ].map((a,i) => <button key={i} onClick={()=>setTab(a.tab)}
+        style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"14px", cursor:"pointer", textAlign:"left", transition:"border-color .15s"}}
+        onMouseEnter={e=>e.currentTarget.style.borderColor=C.borderHover}
+        onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+        <div style={{fontSize:18, marginBottom:6}}>{a.icon}</div>
+        <div style={{fontSize:12, color:a.color, fontWeight:500}}>{a.zh}</div>
+        <div style={{fontSize:10, color:C.muted}}>{a.en}</div>
+      </button>)}
+    </div>
+    <Card style={{marginTop:16}}>
+      <Label zh="系统状态" en="System Status"/>
+      <div style={{marginTop:14, display:"flex", flexDirection:"column", gap:10}}>
+        {[
+          {name:"Claude AI 回邮", ok:true, status:"运行中"},
+          {name:"Shopify 本地配送", ok:true, status:"已启用"},
+          {name:"Klaviyo 邮件推广", ok:true, status:"已安装"},
+        ].map((s,i) => <div key={i} style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+          <span style={{fontSize:12, color:C.text}}>{s.name}</span>
+          <span style={{fontSize:11, padding:"2px 10px", borderRadius:20, background:s.ok?C.accentDim:C.warnDim, color:s.ok?C.accent:C.warn, border:`1px solid ${s.ok?"#1A4A35":"#4A3A10"}`}}>{s.status}</span>
+        </div>)}
+      </div>
+    </Card>
+  </div>;
+}
+
+// ── EMAIL TAB ─────────────────────────────────────────────────────
+const catColors = {
+  "订单状态/物流": {bg:C.blueDim, text:C.blue, border:"#1E3A5F"},
+  "退换货申请": {bg:C.accentDim, text:C.accent, border:"#1A4A35"},
+  "商品咨询": {bg:C.warnDim, text:C.warn, border:"#4A3A10"},
+  "投诉/差评": {bg:C.dangerDim, text:C.danger, border:"#4A1A1A"},
+  "其他": {bg:"#1A1A2A", text:"#A78BFA", border:"#2A2A4A"},
+};
+
+function EmailTab() {
+  const [input,setInput] = useState("");
+  const [reply,setReply] = useState("");
+  const [cat,setCat] = useState("");
+  const [loading,setLoading] = useState(false);
+  const [err,setErr] = useState("");
+
+  const examples = [
+    {label:"物流查询", text:"你好，我的订单#8821下单3天了还没收到，请问什么情况？"},
+    {label:"退换货", text:"Hi, I received the wrong item. Order #9034. Can I exchange?"},
+    {label:"商品咨询", text:"请问这款包包有黑色吗？防水吗？"},
+    {label:"投诉", text:"非常失望！商品质量太差，要求全额退款！"},
+  ];
+
+  async function gen() {
+    setLoading(true); setReply(""); setCat(""); setErr("");
+    try {
+      const t = await callClaude({system:EMAIL_SYSTEM, userContent:`请回复以下客户邮件：\n\n${input}`});
+      const m = t.match(/【(.+?)】/);
+      if(m) {setCat(m[1]); setReply(t.replace(/【.+?】\n?/,"").trim());}
+      else {setReply(t.trim()); setCat("其他");}
+    } catch(e) {setErr("生成失败："+e.message);}
+    setLoading(false);
+  }
+
+  const cs = cat ? (catColors[cat] || catColors["其他"]) : null;
+
+  return <div>
+    <div style={{marginBottom:16}}>
+      <Label zh="自动回邮" en="AI Auto-Reply"/>
+      <p style={{fontSize:12, color:C.muted, margin:"6px 0 0"}}>Claude AI · Zoho Desk Integration</p>
+    </div>
+    <div style={{display:"flex", gap:8, flexWrap:"wrap", marginBottom:12}}>
+      {examples.map(ex => <button key={ex.label} onClick={()=>setInput(ex.text)}
+        style={{padding:"5px 12px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:20, color:C.muted, fontSize:11, cursor:"pointer"}}>
+        {ex.label}
+      </button>)}
+    </div>
+    <div style={{marginBottom:10}}><TA value={input} onChange={setInput} placeholder="粘贴客户来信... / Paste customer email..." rows={4}/></div>
+    <Btn onClick={gen} disabled={loading||!input.trim()} style={{width:"100%", padding:"11px"}}>
+      {loading ? "AI 生成中..." : "生成自动回复 / Generate Reply"}
+    </Btn>
+    {err && <p style={{color:C.danger, fontSize:13, marginTop:10}}>{err}</p>}
+    {reply && <Card style={{marginTop:16, animation:"fadeIn .3s ease"}}>
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
+        <div style={{display:"flex", alignItems:"center", gap:8}}>
+          <Label zh="AI 回复" en="Reply"/>
+          {cs && <span style={{padding:"2px 10px", background:cs.bg, color:cs.text, border:`1px solid ${cs.border}`, borderRadius:20, fontSize:11}}>{cat}</span>}
+        </div>
+        <CopyBtn text={reply}/>
+      </div>
+      <p style={{fontSize:13, lineHeight:1.8, color:"#C8C5BF", margin:0, whiteSpace:"pre-wrap"}}>{reply}</p>
+    </Card>}
+  </div>;
+}
+
+// ── DELIVERY TAB ──────────────────────────────────────────────────
+function DeliveryTab() {
+  const [zones,setZones] = useState([
+    {code:"50000", city:"Kuala Lumpur", active:true, orders:12},
+    {code:"50450", city:"Kuala Lumpur", active:true, orders:8},
+    {code:"50460", city:"Kuala Lumpur", active:true, orders:5},
+    {code:"68000", city:"Ampang", active:false, orders:0},
+    {code:"41000", city:"Klang", active:false, orders:0},
+  ]);
+  const [nc,setNc] = useState("");
+  const [nci,setNci] = useState("");
+  const inp = {flex:1, background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, padding:"8px 10px", color:C.text, fontSize:12, outline:"none"};
+
+  return <div>
+    <div style={{marginBottom:16}}>
+      <Label zh="本地配送管理" en="Local Delivery Zones"/>
+      <p style={{fontSize:12, color:C.muted, margin:"6px 0 0"}}>按邮政编码+城市双重验证 / Postcode + City</p>
+    </div>
+    <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16}}>
+      <Card>
+        <div style={{fontSize:22, color:C.accent, fontFamily:"Georgia,serif"}}>{zones.filter(z=>z.active).length}</div>
+        <div style={{fontSize:11, color:C.muted, marginTop:4}}>启用区域 / Active Zones</div>
+      </Card>
+      <Card>
+        <div style={{fontSize:22, color:C.blue, fontFamily:"Georgia,serif"}}>{zones.filter(z=>z.active).reduce((a,z)=>a+z.orders,0)}</div>
+        <div style={{fontSize:11, color:C.muted, marginTop:4}}>今日配送 / Today</div>
+      </Card>
+    </div>
+    <Card style={{marginBottom:12}}>
+      <Label zh="配送区域" en="Zone List"/>
+      <div style={{marginTop:12, display:"flex", flexDirection:"column", gap:8}}>
+        {zones.map((z,i) => <div key={i} style={{display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px", background:C.bg, borderRadius:8, border:`1px solid ${z.active?"#1A4A35":C.border}`}}>
+          <div style={{display:"flex", alignItems:"center", gap:10}}>
+            <div style={{width:8, height:8, borderRadius:"50%", background:z.active?C.accent:C.muted, boxShadow:z.active?`0 0 6px ${C.accent}`:"none"}}/>
+            <span style={{fontSize:13, color:C.text, fontFamily:"monospace"}}>{z.code}</span>
+            <span style={{fontSize:12, color:C.muted}}>{z.city}</span>
+          </div>
+          <div style={{display:"flex", alignItems:"center", gap:8}}>
+            {z.orders>0 && <span style={{fontSize:11, color:C.blue}}>{z.orders} orders</span>}
+            <button onClick={()=>setZones(zones.map((zn,ix)=>ix===i?{...zn,active:!zn.active}:zn))}
+              style={{padding:"3px 10px", borderRadius:20, fontSize:11, cursor:"pointer", border:"none", background:z.active?C.accentDim:C.border, color:z.active?C.accent:C.muted}}>
+              {z.active?"启用":"停用"}
+            </button>
+            <button onClick={()=>setZones(zones.filter((_,ix)=>ix!==i))}
+              style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:16}}>×</button>
+          </div>
+        </div>)}
+      </div>
+    </Card>
+    <Card>
+      <Label zh="添加区域" en="Add Zone"/>
+      <div style={{display:"flex", gap:8, marginTop:12}}>
+        <input value={nc} onChange={e=>setNc(e.target.value)} placeholder="邮编 / Postcode" style={{...inp, fontFamily:"monospace"}}/>
+        <input value={nci} onChange={e=>setNci(e.target.value)} placeholder="城市 / City" style={inp}/>
+        <Btn onClick={()=>{if(nc&&nci){setZones([...zones,{code:nc,city:nci,active:true,orders:0}]);setNc("");setNci("");}}} disabled={!nc||!nci}>添加</Btn>
+      </div>
+      <p style={{fontSize:11, color:C.muted, margin:"10px 0 0"}}>💡 城市+邮编双重验证，外城客户自动只看到邮寄选项</p>
+    </Card>
+  </div>;
+}
+
+// ── MARKETING TAB ─────────────────────────────────────────────────
+function MarketingTab() {
+  const [sel,setSel] = useState(null);
+  const [custom,setCustom] = useState("");
+  const [result,setResult] = useState("");
+  const [loading,setLoading] = useState(false);
+
+  const templates = [
+    {zh:"首页Banner", en:"Homepage Banner", prompt:"生成首页Banner文案，推广本地当日达配送服务"},
+    {zh:"邮件通知", en:"Email to Locals", prompt:"生成邮件通知现有本地客户，告知当日/次日达配送服务"},
+    {zh:"社交媒体", en:"Social Media", prompt:"生成Instagram/Facebook帖子，推广本地配送当日达，要有吸引力"},
+    {zh:"促销短信", en:"Promo SMS", prompt:"生成促销短信，通知本地客户当日达配送，不超过70字"},
+  ];
+
+  async function gen(prompt) {
+    setLoading(true); setResult("");
+    try {setResult(await callClaude({system:MARKETING_SYSTEM, userContent:prompt}));}
+    catch(e) {setResult("生成失败："+e.message);}
+    setLoading(false);
+  }
+
+  return <div>
+    <div style={{marginBottom:16}}>
+      <Label zh="推广工具" en="Marketing Tools"/>
+      <p style={{fontSize:12, color:C.muted, margin:"6px 0 0"}}>AI 生成本地配送推广文案</p>
+    </div>
+    <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16}}>
+      {templates.map((t,i) => <button key={i} onClick={()=>{setSel(i); gen(t.prompt);}}
+        style={{background:sel===i?C.accentDim:C.surface, border:`1px solid ${sel===i?"#1A4A35":C.border}`, borderRadius:8, padding:"14px 12px", cursor:"pointer", textAlign:"left", transition:"all .15s"}}>
+        <div style={{fontSize:12, color:sel===i?C.accent:C.text, fontWeight:500}}>{t.zh}</div>
+        <div style={{fontSize:10, color:C.muted, marginTop:2}}>{t.en}</div>
+      </button>)}
+    </div>
+    <Card style={{marginBottom:12}}>
+      <Label zh="自定义需求" en="Custom Request"/>
+      <div style={{marginTop:10}}><TA value={custom} onChange={setCustom} placeholder="描述你想要的推广内容..." rows={3}/></div>
+      <Btn onClick={()=>{setSel(null); gen(custom);}} disabled={loading||!custom.trim()} style={{marginTop:10}}>生成 / Generate</Btn>
+    </Card>
+    {loading && <Card><div style={{display:"flex", alignItems:"center", gap:10}}>
+      <div style={{width:8, height:8, borderRadius:"50%", background:C.accent, animation:"pulse 1s infinite"}}/>
+      <span style={{fontSize:12, color:C.muted}}>AI 生成中...</span>
+    </div></Card>}
+    {result && !loading && <Card>
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
+        <Label zh="生成结果" en="Generated Copy"/>
+        <CopyBtn text={result}/>
+      </div>
+      <p style={{fontSize:13, lineHeight:1.9, color:"#C8C5BF", margin:0, whiteSpace:"pre-wrap"}}>{result}</p>
+    </Card>}
+  </div>;
+}
+
+// ── PRODUCTS TAB ──────────────────────────────────────────────────
+function ProductsTab() {
+  const [products,setProducts] = useState([
+    {id:1, name:"经典帆布包", price:"RM 89", stock:45, status:"active", category:"包包"},
+    {id:2, name:"真皮钱包", price:"RM 159", stock:12, status:"active", category:"配件"},
+    {id:3, name:"手机壳 iPhone 15", price:"RM 39", stock:0, status:"draft", category:"手机配件"},
+  ]);
+  const [view,setView] = useState("list");
+  const [mode,setMode] = useState("manual");
+  const [form,setForm] = useState({name:"", category:"", price:"", stock:"", keywords:""});
+  const [imgDesc,setImgDesc] = useState("");
+  const [bulk,setBulk] = useState("");
+  const [gen,setGen] = useState(null);
+  const [loading,setLoading] = useState(false);
+  const [imgFile,setImgFile] = useState(null);
+  const [imgPrev,setImgPrev] = useState(null);
+
+  const inp = {width:"100%", background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, padding:"9px 12px", color:C.text, fontSize:12, outline:"none", boxSizing:"border-box"};
+
+  function handleImg(e) {
+    const f = e.target.files[0]; if(!f) return;
+    setImgFile(f);
+    const r = new FileReader(); r.onload = ev=>setImgPrev(ev.target.result); r.readAsDataURL(f);
+  }
+
+  async function generateDesc() {
+    setLoading(true); setGen(null);
+    try {
+      let uc;
+      if(mode==="image" && imgFile) {
+        const b64 = await new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.readAsDataURL(imgFile)});
+        uc = [{type:"image", source:{type:"base64", media_type:imgFile.type, data:b64}}, {type:"text", text:`请根据这张产品图片生成完整的产品文案。${imgDesc?"补充说明："+imgDesc:""}`}];
+      } else if(mode==="bulk") {
+        uc = `以下是多个产品的基本信息，请为每个产品生成文案，用=====分隔：\n\n${bulk}`;
+      } else {
+        uc = `产品名称：${form.name}\n类别：${form.category}\n价格：${form.price}\n关键词：${form.keywords}\n请生成完整产品文案。`;
+      }
+      setGen(await callClaude({system:PRODUCT_SYSTEM, userContent:uc}));
+      setView("generated");
+    } catch(e) {setGen("生成失败："+e.message); setView("generated");}
+    setLoading(false);
+  }
+
+  function save() {
+    setProducts(p=>[{id:Date.now(), name:form.name||"新产品", price:form.price||"-", stock:parseInt(form.stock)||0, status:"draft", category:form.category||"其他"}, ...p]);
+    setForm({name:"", category:"", price:"", stock:"", keywords:""}); setGen(null); setView("list");
+  }
+
+  if(view==="list") return <div>
+    <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16}}>
+      <div><Label zh="产品管理" en="Product Manager"/><p style={{fontSize:12, color:C.muted, margin:"6px 0 0"}}>{products.length} 个产品 · AI 自动生成描述</p></div>
+      <Btn onClick={()=>setView("add")}>+ 加新产品</Btn>
+    </div>
+    <div style={{display:"flex", flexDirection:"column", gap:8}}>
+      {products.map(p => <div key={p.id} style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+        <div>
+          <div style={{fontSize:13, color:C.text, fontWeight:500}}>{p.name}</div>
+          <div style={{display:"flex", gap:8, marginTop:4}}>
+            <span style={{fontSize:11, color:C.muted}}>{p.category}</span>
+            <span style={{fontSize:11, color:C.accent}}>{p.price}</span>
+            <span style={{fontSize:11, color:p.stock===0?C.danger:C.muted}}>{p.stock===0?"缺货":`库存 ${p.stock}`}</span>
+          </div>
+        </div>
+        <div style={{display:"flex", gap:8, alignItems:"center"}}>
+          <button onClick={()=>setProducts(products.map(x=>x.id===p.id?{...x,status:x.status==="active"?"draft":"active"}:x))}
+            style={{padding:"3px 10px", borderRadius:20, fontSize:11, cursor:"pointer", border:"none", background:p.status==="active"?C.accentDim:C.border, color:p.status==="active"?C.accent:C.muted}}>
+            {p.status==="active"?"上架":"草稿"}
+          </button>
+          <button onClick={()=>setProducts(products.filter(x=>x.id!==p.id))}
+            style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:16}}>×</button>
+        </div>
+      </div>)}
+    </div>
+  </div>;
+
+  if(view==="add") return <div>
+    <div style={{display:"flex", alignItems:"center", gap:12, marginBottom:20}}>
+      <button onClick={()=>setView("list")} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18}}>←</button>
+      <Label zh="加新产品" en="Add Product"/>
+    </div>
+    <div style={{display:"flex", gap:6, marginBottom:16}}>
+      {[{id:"manual",zh:"手动填写"},{id:"image",zh:"上传图片 AI"},{id:"bulk",zh:"批量上传"}].map(m =>
+        <button key={m.id} onClick={()=>setMode(m.id)} style={{flex:1, padding:"8px", borderRadius:6, cursor:"pointer", fontSize:11, border:"none", background:mode===m.id?C.accent:C.surface, color:mode===m.id?"#0A0A0F":C.muted}}>{m.zh}</button>
+      )}
+    </div>
+    {mode==="manual" && <Card style={{marginBottom:12}}>
+      <Label zh="产品信息" en="Product Info"/>
+      <div style={{display:"flex", flexDirection:"column", gap:10, marginTop:12}}>
+        {[{key:"name",ph:"产品名称 / Product Name"},{key:"category",ph:"类别 / Category"},{key:"price",ph:"价格 / Price (e.g. RM 99)"},{key:"stock",ph:"库存 / Stock"},{key:"keywords",ph:"关键词 / Keywords"}].map(f =>
+          <input key={f.key} value={form[f.key]} onChange={e=>setForm(x=>({...x,[f.key]:e.target.value}))} placeholder={f.ph} style={inp}/>
+        )}
+      </div>
+    </Card>}
+    {mode==="image" && <Card style={{marginBottom:12}}>
+      <Label zh="上传产品图片" en="Upload Product Image"/>
+      <div style={{marginTop:12}}>
+        <label style={{display:"block", border:`2px dashed ${C.border}`, borderRadius:8, padding:"24px", textAlign:"center", cursor:"pointer"}}>
+          {imgPrev ? <img src={imgPrev} alt="preview" style={{maxHeight:160, maxWidth:"100%", borderRadius:6}}/> :
+            <div><div style={{fontSize:28, marginBottom:8}}>📷</div><div style={{fontSize:12, color:C.muted}}>点击上传产品图片</div></div>}
+          <input type="file" accept="image/*" onChange={handleImg} style={{display:"none"}}/>
+        </label>
+        <div style={{marginTop:10}}><TA value={imgDesc} onChange={setImgDesc} placeholder="补充说明（可选）..." rows={2}/></div>
+      </div>
+    </Card>}
+    {mode==="bulk" && <Card style={{marginBottom:12}}>
+      <Label zh="批量输入" en="Bulk Input"/>
+      <p style={{fontSize:11, color:C.muted, margin:"8px 0 10px"}}>每行一个产品，格式：产品名, 类别, 价格</p>
+      <TA value={bulk} onChange={setBulk} placeholder={"经典帆布包, 包包, RM89\n真皮钱包, 配件, RM159"} rows={6}/>
+    </Card>}
+    <div style={{display:"flex", gap:10}}>
+      <Btn onClick={generateDesc} disabled={loading||(mode==="manual"&&!form.name)||(mode==="image"&&!imgFile)||(mode==="bulk"&&!bulk)} style={{flex:1, padding:"11px"}}>
+        {loading?"AI 生成中...":"AI 生成产品描述 / Generate"}
+      </Btn>
+      {mode==="manual" && <Btn onClick={save} variant="ghost" disabled={!form.name}>直接保存</Btn>}
+    </div>
+  </div>;
+
+  if(view==="generated") return <div>
+    <div style={{display:"flex", alignItems:"center", gap:12, marginBottom:20}}>
+      <button onClick={()=>setView("add")} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18}}>←</button>
+      <Label zh="AI 生成结果" en="Generated Description"/>
+    </div>
+    <Card style={{marginBottom:12}}>
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14}}>
+        <div style={{display:"flex", alignItems:"center", gap:8}}>
+          <div style={{width:7, height:7, borderRadius:"50%", background:C.accent, boxShadow:`0 0 6px ${C.accent}`}}/>
+          <span style={{fontSize:11, color:C.accent, letterSpacing:1}}>AI GENERATED</span>
+        </div>
+        <CopyBtn text={gen}/>
+      </div>
+      <p style={{fontSize:13, lineHeight:1.9, color:"#C8C5BF", margin:0, whiteSpace:"pre-wrap"}}>{gen}</p>
+    </Card>
+    <div style={{display:"flex", gap:10}}>
+      <Btn onClick={save} style={{flex:1, padding:"11px"}}>保存产品 / Save Product</Btn>
+      <Btn onClick={()=>setView("add")} variant="ghost">重新生成</Btn>
+    </div>
+  </div>;
+}
+
+// ── MAIN APP ──────────────────────────────────────────────────────
+function App() {
+  const [activeTab,setActiveTab] = useState("overview");
+  return <div style={{minHeight:"100vh", background:C.bg, color:C.text}}>
+    <div style={{borderBottom:`1px solid ${C.border}`, padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between"}}>
+      <div>
+        <div style={{display:"flex", alignItems:"center", gap:8}}>
+          <div style={{width:7, height:7, borderRadius:"50%", background:C.accent, boxShadow:`0 0 8px ${C.accent}`}}/>
+          <span style={{fontSize:10, letterSpacing:3, color:C.muted, textTransform:"uppercase"}}>Coco Island Mart · Store Manager</span>
+        </div>
+        <h1 style={{fontSize:18, fontWeight:"normal", margin:"4px 0 0", fontFamily:"Georgia,serif", color:C.text}}>Shopify Dashboard</h1>
+      </div>
+      <div style={{padding:"4px 12px", background:C.accentDim, border:`1px solid #1A4A35`, borderRadius:20, fontSize:10, color:C.accent, letterSpacing:1}}>LIVE</div>
+    </div>
+    <div style={{display:"flex", borderBottom:`1px solid ${C.border}`, padding:"0 20px", overflowX:"auto"}}>
+      {tabs.map(t => <button key={t.id} onClick={()=>setActiveTab(t.id)}
+        style={{padding:"12px 14px", background:"transparent", border:"none", borderBottom:`2px solid ${activeTab===t.id?C.accent:"transparent"}`, color:activeTab===t.id?C.accent:C.muted, fontSize:11, cursor:"pointer", transition:"all .15s", whiteSpace:"nowrap"}}>
+        <span style={{marginRight:5}}>{t.icon}</span>{t.zh}
+      </button>)}
+    </div>
+    <div style={{padding:20, maxWidth:640, margin:"0 auto"}}>
+      {activeTab==="overview" && <Overview setTab={setActiveTab}/>}
+      {activeTab==="email" && <EmailTab/>}
+      {activeTab==="delivery" && <DeliveryTab/>}
+      {activeTab==="marketing" && <MarketingTab/>}
+      {activeTab==="products" && <ProductsTab/>}
+    </div>
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
