@@ -2,16 +2,16 @@
 // IMPORTANT: Replace YOUR_ANTHROPIC_API_KEY with your actual key
 // or set ANTHROPIC_API_KEY in your .env file
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || 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
+const ANTHROPIC_API_KEY = "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";
 export async function callClaude({ system, userContent, maxTokens = 1000 }) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: { 
-  "Content-Type": "application/json",
-  "x-api-key": ANTHROPIC_API_KEY,
-  "anthropic-version": "2023-06-01",
-  "anthropic-dangerous-direct-browser-access": "true"
-},
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
       max_tokens: maxTokens,
@@ -23,7 +23,6 @@ export async function callClaude({ system, userContent, maxTokens = 1000 }) {
   const data = await response.json();
   return data.content?.[0]?.text || "";
 }
-
 // ── System Prompts ───────────────────────────────────────────────
 
 export const EMAIL_SYSTEM = `你是一个专业的电商客服助手，代表 Coco Island Mart 回复客户邮件。
