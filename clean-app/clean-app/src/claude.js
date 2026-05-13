@@ -2,8 +2,7 @@
 // IMPORTANT: Replace YOUR_ANTHROPIC_API_KEY with your actual key
 // or set ANTHROPIC_API_KEY in your .env file
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "YOUR_ANTHROPIC_API_KEY";
-
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || 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
 export async function callClaude({ system, userContent, maxTokens = 1000 }) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
