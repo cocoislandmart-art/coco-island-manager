@@ -607,7 +607,7 @@ const product = {
       <p style={{fontSize:13, lineHeight:1.9, color:"#C8C5BF", margin:0, whiteSpace:"pre-wrap"}}>{gen}</p>
     </Card>
     <div style={{display:"flex", gap:10}}>
-     <Btn onClick={()=>setView("add")}>+ Add Product</Btn>
+     <Btn onClick={uploadToShopify} style={{flex:1, padding:"11px"}}>🚀 Upload to Shopify</Btn>
 <Btn onClick={save} variant="ghost">Save Locally</Btn>
 <Btn onClick={()=>setView("add")} variant="ghost">Regenerate</Btn>
     </div>
