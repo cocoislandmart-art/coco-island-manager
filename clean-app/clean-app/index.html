@@ -40,34 +40,8 @@ const EMAIL_SYSTEM = `You are a professional customer service representative for
 4. Complaint - apologize sincerely, promise to follow up
 Sign off as: "Best regards,\nCoco Island Mart Customer Service Team"`;
 
-const PRODUCT_SYSTEM = `You are a professional e-commerce copywriter and SEO expert specializing in high-converting product listings. Generate compelling product copy based on product information.
-
-Format your response EXACTLY as follows:
-
-[Product Title]
-Write a compelling title under 15 words with primary keyword first
-
-[Key Features]
-- Feature 1: specific benefit
-- Feature 2: specific benefit  
-- Feature 3: specific benefit
-
-[Product Description]
-Write 100-150 words in English focusing on benefits and lifestyle appeal
----
-用100-150字写中文版本，强调产品价值和生活方式
-
-[High-Traffic SEO Keywords]
-Primary: (highest search volume keyword)
-Secondary: keyword2, keyword3, keyword4, keyword5
-Long-tail: "exact phrase buyers search for", "another buyer phrase"
-Tags: tag1, tag2, tag3, tag4, tag5, tag6, tag7, tag8, tag9, tag10
-
-[Suggested Price Range]
-Based on market research, suggest competitive price range
-
-Tone: professional, conversion-focused, highlight unique value proposition`;
-
+const PRODUCT_SYSTEM = `You are a professional e-commerce copywriter. Generate compelling product copy based on product information.
+Format: [Product Title] under 15 words\n[Key Features] 3 core selling points\n[Product Description] 100-150 words, bilingual Chinese/English separated by ---\n[SEO Tags] 5 keywords\nTone: professional, attractive, value-focused`;
 
 const MARKETING_SYSTEM = `You are an e-commerce marketing copywriter for Coco Island Mart. Generate local delivery promotional copy. Requirements: highlight same-day/next-day delivery advantage, friendly tone, bilingual Chinese/English. Format: Chinese version first, then English version, separated by ---.`;
 
@@ -401,36 +375,131 @@ function MarketingTab() {
 }
 
 function ProductsTab() {
-  const [products,setProducts] = useState([
-    {id:1, name:"经典帆布包", price:"RM 89", stock:45, status:"active", category:"包包"},
-    {id:2, name:"真皮钱包", price:"RM 159", stock:12, status:"active", category:"配件"},
-    {id:3, name:"手机壳 iPhone 15", price:"RM 39", stock:0, status:"draft", category:"手机配件"},
-  ]);
-  const [view,setView] = useState("list");
-  const [mode,setMode] = useState("manual");
-  const [form,setForm] = useState({name:"", category:"", price:"", comparePrice:"", stock:"", sku:"", barcode:"", weight:"", vendor:"Coco Island Mart", tags:"", keywords:""});
-
-function generateSKU(name, category) {
-  const prefix = (category||"GEN").substring(0,3).toUpperCase();
-  const mid = (name||"PROD").replace(/\s+/g,"").substring(0,4).toUpperCase();
-  const num = Math.floor(Math.random()*9000)+1000;
-  return `${prefix}-${mid}-${num}`;
-}
-
-function generateUPC() {
-  const digits = Array.from({length:11}, ()=>Math.floor(Math.random()*10));
-  const sum = digits.reduce((a,d,i)=>a+d*(i%2===0?3:1),0);
-  const check = (10-sum%10)%10;
-  return [...digits, check].join('');
-}
-  const [imgDesc,setImgDesc] = useState("");
-  const [bulk,setBulk] = useState("");
-  const [gen,setGen] = useState(null);
-  const [loading,setLoading] = useState(false);
-  const [imgFile,setImgFile] = useState(null);
-  const [imgPrev,setImgPrev] = useState(null);
+  const [view, setView] = useState("list");
+  const [shopifyProducts, setShopifyProducts] = useState([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [mode, setMode] = useState("manual");
+  const [form, setForm] = useState({name:"", category:"", price:"", comparePrice:"", stock:"", sku:"", barcode:"", weight:"", vendor:"Coco Island Mart", tags:"", keywords:""});
+  const [imgDesc, setImgDesc] = useState("");
+  const [bulk, setBulk] = useState("");
+  const [gen, setGen] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [imgFile, setImgFile] = useState(null);
+  const [imgPrev, setImgPrev] = useState(null);
+  const [searchQ, setSearchQ] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [msg, setMsg] = useState("");
 
   const inp = {width:"100%", background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, padding:"9px 12px", color:C.text, fontSize:12, outline:"none", boxSizing:"border-box"};
+
+  function generateSKU(name, category) {
+    const prefix = (category||"GEN").substring(0,3).toUpperCase();
+    const mid = (name||"PROD").replace(/\s+/g,"").substring(0,4).toUpperCase();
+    const num = Math.floor(Math.random()*9000)+1000;
+    return `${prefix}-${mid}-${num}`;
+  }
+
+  function generateUPC() {
+    const digits = Array.from({length:11}, ()=>Math.floor(Math.random()*10));
+    const sum = digits.reduce((a,d,i)=>a+d*(i%2===0?3:1),0);
+    const check = (10-sum%10)%10;
+    return [...digits, check].join('');
+  }
+
+  async function loadShopifyProducts() {
+    setLoadingProducts(true); setMsg("");
+    try {
+      const res = await fetch(WORKER + "/shopify/products?limit=50");
+      const data = await res.json();
+      setShopifyProducts(data.products || []);
+    } catch(e) { setMsg("Failed to load: " + e.message); }
+    setLoadingProducts(false);
+  }
+
+  useEffect(() => { loadShopifyProducts(); }, []);
+
+  function startEdit(product) {
+    setEditingProduct(product);
+    const v = product.variants?.[0] || {};
+    setEditForm({
+      title: product.title || "",
+      status: product.status || "draft",
+      vendor: product.vendor || "",
+      product_type: product.product_type || "",
+      tags: product.tags || "",
+      price: v.price || "",
+      compare_at_price: v.compare_at_price || "",
+      sku: v.sku || "",
+      barcode: v.barcode || "",
+      inventory_quantity: v.inventory_quantity ?? "",
+      weight: v.weight || "",
+    });
+    setView("edit");
+  }
+
+  async function saveEdit() {
+    setSaving(true); setMsg("");
+    try {
+      // Update product fields
+      const productRes = await fetch(`${WORKER}/shopify/products/${editingProduct.id}`, {
+        method: "PUT",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ product: {
+          id: editingProduct.id,
+          title: editForm.title,
+          status: editForm.status,
+          vendor: editForm.vendor,
+          product_type: editForm.product_type,
+          tags: editForm.tags,
+        }})
+      });
+      // Update variant (price, inventory)
+      const variantId = editingProduct.variants?.[0]?.id;
+      if (variantId) {
+        await fetch(`${WORKER}/shopify/variants/${variantId}`, {
+          method: "PUT",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ variant: {
+            id: variantId,
+            price: editForm.price,
+            compare_at_price: editForm.compare_at_price || null,
+            sku: editForm.sku,
+            barcode: editForm.barcode,
+            weight: parseFloat(editForm.weight) || 0,
+            inventory_quantity: parseInt(editForm.inventory_quantity) || 0,
+          }})
+        });
+      }
+      setMsg("✅ Saved successfully!");
+      await loadShopifyProducts();
+      setTimeout(() => setView("list"), 1000);
+    } catch(e) { setMsg("❌ Save failed: " + e.message); }
+    setSaving(false);
+  }
+
+  async function deleteProduct(productId) {
+    if (!confirm("Delete this product from Shopify?")) return;
+    try {
+      await fetch(`${WORKER}/shopify/products/${productId}`, { method: "DELETE" });
+      setMsg("✅ Deleted!");
+      await loadShopifyProducts();
+    } catch(e) { setMsg("❌ " + e.message); }
+  }
+
+  async function toggleStatus(product) {
+    const newStatus = product.status === "active" ? "draft" : "active";
+    try {
+      await fetch(`${WORKER}/shopify/products/${product.id}`, {
+        method: "PUT",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ product: { id: product.id, status: newStatus }})
+      });
+      await loadShopifyProducts();
+    } catch(e) { setMsg("❌ " + e.message); }
+  }
 
   function handleImg(e) {
     const f = e.target.files[0]; if(!f) return;
@@ -451,49 +520,42 @@ function generateUPC() {
         uc = `Product Name: ${form.name}\nCategory: ${form.category}\nPrice: ${form.price}\nKeywords: ${form.keywords}\nPlease generate complete product copy.`;
       }
       const result = await callClaude({system:PRODUCT_SYSTEM, userContent:uc});
-setGen(result);
-// Auto-extract and fill keywords
-const keywordMatch = result.match(/\[High-Traffic SEO Keywords\]([\s\S]*?)\[/);
-if (keywordMatch) {
-  const kwSection = keywordMatch[1];
-  const tagsMatch = kwSection.match(/Tags:\s*(.+)/);
-  if (tagsMatch) setForm(f=>({...f, tags: tagsMatch[1].trim()}));
-  const primaryMatch = kwSection.match(/Primary:\s*(.+)/);
-  if (primaryMatch) setForm(f=>({...f, keywords: primaryMatch[1].trim()}));
-}
-setView("generated");
+      setGen(result);
+      const keywordMatch = result.match(/\[High-Traffic SEO Keywords\]([\s\S]*?)\[/);
+      if (keywordMatch) {
+        const kwSection = keywordMatch[1];
+        const tagsMatch = kwSection.match(/Tags:\s*(.+)/);
+        if (tagsMatch) setForm(f=>({...f, tags: tagsMatch[1].trim()}));
+        const primaryMatch = kwSection.match(/Primary:\s*(.+)/);
+        if (primaryMatch) setForm(f=>({...f, keywords: primaryMatch[1].trim()}));
+      }
+      setView("generated");
     } catch(e) {setGen("Generation failed: "+e.message); setView("generated");}
     setLoading(false);
-  }
-
-  async function save() {
-    setProducts(p=>[{id:Date.now(), name:form.name||"New Product", price:form.price||"-", stock:parseInt(form.stock)||0, status:"draft", category:form.category||"Other"}, ...p]);
-    setForm({name:"", category:"", price:"", stock:"", keywords:""}); setGen(null); setView("list");
   }
 
   async function uploadToShopify() {
     setLoading(true);
     try {
       const sku = form.sku || generateSKU(form.name, form.category);
-const barcode = form.barcode || generateUPC();
-const product = {
-  title: form.name || "New Product",
-  body_html: gen || "",
-  vendor: form.vendor || "Coco Island Mart",
-  product_type: form.category || "",
-  status: "draft",
-  tags: form.tags || form.keywords || "",
-  variants: [{
-    price: form.price?.replace(/[^0-9.]/g,"") || "0",
-    compare_at_price: form.comparePrice?.replace(/[^0-9.]/g,"") || undefined,
-    sku: sku,
-    barcode: barcode,
-    weight: parseFloat(form.weight)||0,
-    weight_unit: "kg",
-    inventory_quantity: parseInt(form.stock)||0,
-    inventory_management: "shopify"
-  }]
-};
+      const barcode = form.barcode || generateUPC();
+      const product = {
+        title: form.name || "New Product",
+        body_html: gen || "",
+        vendor: form.vendor || "Coco Island Mart",
+        product_type: form.category || "",
+        status: "draft",
+        tags: form.tags || form.keywords || "",
+        variants: [{
+          price: form.price?.replace(/[^0-9.]/g,"") || "0",
+          compare_at_price: form.comparePrice?.replace(/[^0-9.]/g,"") || undefined,
+          sku, barcode,
+          weight: parseFloat(form.weight)||0,
+          weight_unit: "kg",
+          inventory_quantity: parseInt(form.stock)||0,
+          inventory_management: "shopify"
+        }]
+      };
       const res = await fetch(WORKER + "/shopify/products", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
@@ -501,7 +563,8 @@ const product = {
       });
       const data = await res.json();
       if (data.product) {
-        alert("✅ Product uploaded to Shopify!\nID: " + data.product.id + "\nStatus: Draft - go to Shopify admin to publish.");
+        alert("✅ Uploaded to Shopify as Draft!\nProduct ID: " + data.product.id + "\nGo to Shopify admin to publish.");
+        await loadShopifyProducts();
         setView("list");
       } else {
         alert("❌ Upload failed: " + JSON.stringify(data.errors || data));
@@ -510,88 +573,168 @@ const product = {
     setLoading(false);
   }
 
-  if(view==="list") return <div>
+  const filtered = shopifyProducts.filter(p => {
+    const matchSearch = !searchQ || p.title?.toLowerCase().includes(searchQ.toLowerCase()) || p.tags?.toLowerCase().includes(searchQ.toLowerCase());
+    const matchStatus = filterStatus === "all" || p.status === filterStatus;
+    return matchSearch && matchStatus;
+  });
+
+  // LIST VIEW
+  if (view === "list") return <div>
     <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16}}>
-      <div><Label zh="产品管理" en="Product Manager"/><p style={{fontSize:12, color:C.muted, margin:"6px 0 0"}}>{products.length} products · AI auto-generate descriptions</p></div>
-      <Btn onClick={()=>setView("add")}>+ Add Product</Btn>
+      <div>
+        <Label zh="产品管理" en="Product Manager"/>
+        <p style={{fontSize:12, color:C.muted, margin:"6px 0 0"}}>{shopifyProducts.length} products from Shopify · Live sync</p>
+      </div>
+      <div style={{display:"flex", gap:8}}>
+        <button onClick={loadShopifyProducts} style={{background:"transparent", border:`1px solid ${C.border}`, borderRadius:6, color:C.muted, cursor:"pointer", fontSize:12, padding:"6px 12px"}}>↻ Refresh</button>
+        <Btn onClick={()=>{setView("add"); setGen(null); setForm({name:"", category:"", price:"", comparePrice:"", stock:"", sku:"", barcode:"", weight:"", vendor:"Coco Island Mart", tags:"", keywords:""});}}>+ Add Product</Btn>
+      </div>
     </div>
-    <div style={{display:"flex", flexDirection:"column", gap:8}}>
-      {products.map(p => <div key={p.id} style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-        <div>
-          <div style={{fontSize:13, color:C.text, fontWeight:500}}>{p.name}</div>
-          <div style={{display:"flex", gap:8, marginTop:4}}>
-            <span style={{fontSize:11, color:C.muted}}>{p.category}</span>
-            <span style={{fontSize:11, color:C.accent}}>{p.price}</span>
-            <span style={{fontSize:11, color:p.stock===0?C.danger:C.muted}}>{p.stock===0?"Out of stock":`Stock: ${p.stock}`}</span>
+
+    {msg && <div style={{padding:"8px 12px", background:msg.includes("✅")?C.accentDim:C.dangerDim, borderRadius:6, fontSize:12, color:msg.includes("✅")?C.accent:C.danger, marginBottom:12}}>{msg}</div>}
+
+    <div style={{display:"flex", gap:8, marginBottom:12}}>
+      <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="🔍 Search products..." style={{...inp, flex:1}}/>
+      <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{...inp, width:"auto", cursor:"pointer"}}>
+        <option value="all">All Status</option>
+        <option value="active">Active</option>
+        <option value="draft">Draft</option>
+        <option value="archived">Archived</option>
+      </select>
+    </div>
+
+    {loadingProducts && <Card><div style={{display:"flex", alignItems:"center", gap:10}}><div style={{width:8, height:8, borderRadius:"50%", background:C.accent, animation:"pulse 1s infinite"}}/><span style={{fontSize:12, color:C.muted}}>Loading from Shopify...</span></div></Card>}
+
+    <div style={{display:"flex", flexDirection:"column", gap:6}}>
+      {filtered.map(p => {
+        const v = p.variants?.[0] || {};
+        const imgUrl = p.image?.src;
+        return <div key={p.id} style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"12px 14px", display:"flex", alignItems:"center", gap:12}}>
+          {imgUrl && <img src={imgUrl} alt={p.title} style={{width:44, height:44, objectFit:"cover", borderRadius:6, flexShrink:0}}/>}
+          {!imgUrl && <div style={{width:44, height:44, background:C.bg, borderRadius:6, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18}}>📦</div>}
+          <div style={{flex:1, minWidth:0}}>
+            <div style={{fontSize:13, color:C.text, fontWeight:500, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p.title}</div>
+            <div style={{display:"flex", gap:8, marginTop:3, flexWrap:"wrap"}}>
+              <span style={{fontSize:11, color:C.accent}}>${v.price}</span>
+              {v.compare_at_price && <span style={{fontSize:11, color:C.muted, textDecoration:"line-through"}}>${v.compare_at_price}</span>}
+              <span style={{fontSize:11, color:C.muted}}>{p.product_type||"—"}</span>
+              <span style={{fontSize:11, color:v.inventory_quantity===0?C.danger:C.muted}}>Stock: {v.inventory_quantity??"?"}</span>
+              {v.sku && <span style={{fontSize:10, color:C.muted, fontFamily:"monospace"}}>SKU: {v.sku}</span>}
+            </div>
           </div>
-        </div>
-        <div style={{display:"flex", gap:8, alignItems:"center"}}>
-          <button onClick={()=>setProducts(products.map(x=>x.id===p.id?{...x,status:x.status==="active"?"draft":"active"}:x))}
-            style={{padding:"3px 10px", borderRadius:20, fontSize:11, cursor:"pointer", border:"none", background:p.status==="active"?C.accentDim:C.border, color:p.status==="active"?C.accent:C.muted}}>
-            {p.status==="active"?"Active":"Draft"}
-          </button>
-          <button onClick={()=>setProducts(products.filter(x=>x.id!==p.id))}
-            style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:16}}>×</button>
-        </div>
-      </div>)}
+          <div style={{display:"flex", gap:6, alignItems:"center", flexShrink:0}}>
+            <button onClick={()=>toggleStatus(p)} style={{padding:"3px 10px", borderRadius:20, fontSize:11, cursor:"pointer", border:"none", background:p.status==="active"?C.accentDim:C.border, color:p.status==="active"?C.accent:C.muted}}>
+              {p.status==="active"?"Active":"Draft"}
+            </button>
+            <button onClick={()=>startEdit(p)} style={{padding:"4px 10px", borderRadius:6, fontSize:11, cursor:"pointer", border:`1px solid ${C.border}`, background:"transparent", color:C.muted}}>Edit</button>
+            <button onClick={()=>deleteProduct(p.id)} style={{background:"transparent", border:"none", color:C.danger, cursor:"pointer", fontSize:16, lineHeight:1}}>×</button>
+          </div>
+        </div>;
+      })}
+      {!loadingProducts && filtered.length === 0 && <div style={{textAlign:"center", padding:40, color:C.muted, fontSize:13}}>No products found</div>}
     </div>
   </div>;
 
-  if(view==="add") return <div>
+  // EDIT VIEW
+  if (view === "edit") return <div>
     <div style={{display:"flex", alignItems:"center", gap:12, marginBottom:20}}>
       <button onClick={()=>setView("list")} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18}}>←</button>
-      <Label zh="加新产品" en="Add Product"/>
+      <Label zh="编辑产品" en="Edit Product"/>
+    </div>
+    {msg && <div style={{padding:"8px 12px", background:msg.includes("✅")?C.accentDim:C.dangerDim, borderRadius:6, fontSize:12, color:msg.includes("✅")?C.accent:C.danger, marginBottom:12}}>{msg}</div>}
+    <Card style={{marginBottom:12}}>
+      <Label zh="基本信息" en="Basic Info"/>
+      <div style={{display:"flex", flexDirection:"column", gap:10, marginTop:12}}>
+        <input value={editForm.title||""} onChange={e=>setEditForm(f=>({...f,title:e.target.value}))} placeholder="Product Title" style={inp}/>
+        <div style={{display:"flex", gap:8}}>
+          <select value={editForm.status||"draft"} onChange={e=>setEditForm(f=>({...f,status:e.target.value}))} style={{...inp, flex:1, cursor:"pointer"}}>
+            <option value="active">Active (Published)</option>
+            <option value="draft">Draft (Hidden)</option>
+            <option value="archived">Archived</option>
+          </select>
+          <input value={editForm.vendor||""} onChange={e=>setEditForm(f=>({...f,vendor:e.target.value}))} placeholder="Vendor/Brand" style={{...inp, flex:1}}/>
+        </div>
+        <input value={editForm.product_type||""} onChange={e=>setEditForm(f=>({...f,product_type:e.target.value}))} placeholder="Product Type/Category" style={inp}/>
+        <input value={editForm.tags||""} onChange={e=>setEditForm(f=>({...f,tags:e.target.value}))} placeholder="Tags (comma separated)" style={inp}/>
+      </div>
+    </Card>
+    <Card style={{marginBottom:12}}>
+      <Label zh="价格 & 库存" en="Price & Inventory"/>
+      <div style={{display:"flex", flexDirection:"column", gap:10, marginTop:12}}>
+        <div style={{display:"flex", gap:8}}>
+          <input value={editForm.price||""} onChange={e=>setEditForm(f=>({...f,price:e.target.value}))} placeholder="Price" style={{...inp, flex:1}}/>
+          <input value={editForm.compare_at_price||""} onChange={e=>setEditForm(f=>({...f,compare_at_price:e.target.value}))} placeholder="Compare at Price" style={{...inp, flex:1}}/>
+        </div>
+        <div style={{display:"flex", gap:8}}>
+          <input value={editForm.inventory_quantity??""} onChange={e=>setEditForm(f=>({...f,inventory_quantity:e.target.value}))} placeholder="Stock Quantity" style={{...inp, flex:1}} type="number"/>
+          <input value={editForm.weight||""} onChange={e=>setEditForm(f=>({...f,weight:e.target.value}))} placeholder="Weight (kg)" style={{...inp, flex:1}}/>
+        </div>
+        <div style={{display:"flex", gap:8}}>
+          <input value={editForm.sku||""} onChange={e=>setEditForm(f=>({...f,sku:e.target.value}))} placeholder="SKU" style={{...inp, flex:1, fontFamily:"monospace"}}/>
+          <input value={editForm.barcode||""} onChange={e=>setEditForm(f=>({...f,barcode:e.target.value}))} placeholder="UPC/Barcode" style={{...inp, flex:1, fontFamily:"monospace"}}/>
+        </div>
+      </div>
+    </Card>
+    <div style={{display:"flex", gap:10}}>
+      <Btn onClick={saveEdit} disabled={saving} style={{flex:1, padding:"11px"}}>{saving?"Saving...":"💾 Save Changes"}</Btn>
+      <Btn onClick={()=>setView("list")} variant="ghost">Cancel</Btn>
+    </div>
+  </div>;
+
+  // ADD VIEW
+  if (view === "add") return <div>
+    <div style={{display:"flex", alignItems:"center", gap:12, marginBottom:20}}>
+      <button onClick={()=>setView("list")} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18}}>←</button>
+      <Label zh="加新产品" en="Add New Product"/>
     </div>
     <div style={{display:"flex", gap:6, marginBottom:16}}>
-      {[{id:"manual",zh:"Manual"},{id:"image",zh:"Upload Image AI"},{id:"bulk",zh:"Bulk Upload"}].map(m =>
+      {[{id:"manual",zh:"Manual"},{id:"image",zh:"Image AI"},{id:"bulk",zh:"Bulk"}].map(m =>
         <button key={m.id} onClick={()=>setMode(m.id)} style={{flex:1, padding:"8px", borderRadius:6, cursor:"pointer", fontSize:11, border:"none", background:mode===m.id?C.accent:C.surface, color:mode===m.id?"#0A0A0F":C.muted}}>{m.zh}</button>
       )}
     </div>
     {mode==="manual" && <Card style={{marginBottom:12}}>
       <Label zh="产品信息" en="Product Info"/>
       <div style={{display:"flex", flexDirection:"column", gap:10, marginTop:12}}>
-       {[
-  {key:"name",ph:"Product Name *"},
-  {key:"category",ph:"Category (e.g. Bags, Accessories)"},
-  {key:"price",ph:"Price (e.g. 99.90)"},
-  {key:"comparePrice",ph:"Compare at Price (original price, optional)"},
-  {key:"stock",ph:"Stock Quantity"},
-  {key:"sku",ph:"SKU (leave blank to auto-generate)"},
-  {key:"barcode",ph:"UPC/Barcode (leave blank to auto-generate)"},
-  {key:"weight",ph:"Weight (e.g. 0.5 kg)"},
-  {key:"vendor",ph:"Vendor/Brand"},
-  {key:"tags",ph:"Tags (comma separated)"},
-  {key:"keywords",ph:"SEO Keywords"}
-].map(f =>
-          <input key={f.key} value={form[f.key]} onChange={e=>setForm(x=>({...x,[f.key]:e.target.value}))} placeholder={f.ph} style={inp}/>
-        )}
+        {[
+          {key:"name",ph:"Product Name *"},
+          {key:"category",ph:"Category"},
+          {key:"price",ph:"Price (e.g. 29.90)"},
+          {key:"comparePrice",ph:"Compare at Price (optional)"},
+          {key:"stock",ph:"Stock Quantity"},
+          {key:"sku",ph:"SKU (auto-generate if blank)"},
+          {key:"barcode",ph:"UPC/Barcode (auto-generate if blank)"},
+          {key:"weight",ph:"Weight (e.g. 0.5)"},
+          {key:"vendor",ph:"Vendor/Brand"},
+          {key:"tags",ph:"Tags (comma separated)"},
+          {key:"keywords",ph:"SEO Keywords"}
+        ].map(f => <input key={f.key} value={form[f.key]} onChange={e=>setForm(x=>({...x,[f.key]:e.target.value}))} placeholder={f.ph} style={inp}/>)}
       </div>
     </Card>}
     {mode==="image" && <Card style={{marginBottom:12}}>
-      <Label zh="上传产品图片" en="Upload Product Image"/>
+      <Label zh="上传图片" en="Upload Image"/>
       <div style={{marginTop:12}}>
         <label style={{display:"block", border:`2px dashed ${C.border}`, borderRadius:8, padding:"24px", textAlign:"center", cursor:"pointer"}}>
-          {imgPrev ? <img src={imgPrev} alt="preview" style={{maxHeight:160, maxWidth:"100%", borderRadius:6}}/> :
-            <div><div style={{fontSize:28, marginBottom:8}}>📷</div><div style={{fontSize:12, color:C.muted}}>Click to upload product image</div></div>}
+          {imgPrev ? <img src={imgPrev} alt="preview" style={{maxHeight:160, maxWidth:"100%", borderRadius:6}}/> : <div><div style={{fontSize:28, marginBottom:8}}>📷</div><div style={{fontSize:12, color:C.muted}}>Click to upload</div></div>}
           <input type="file" accept="image/*" onChange={handleImg} style={{display:"none"}}/>
         </label>
-        <div style={{marginTop:10}}><TA value={imgDesc} onChange={setImgDesc} placeholder="Additional notes (optional)..." rows={2}/></div>
+        <div style={{marginTop:10}}><TA value={imgDesc} onChange={setImgDesc} placeholder="Additional notes..." rows={2}/></div>
       </div>
     </Card>}
     {mode==="bulk" && <Card style={{marginBottom:12}}>
-      <Label zh="批量输入" en="Bulk Input"/>
-      <p style={{fontSize:11, color:C.muted, margin:"8px 0 10px"}}>One product per line: Product Name, Category, Price</p>
-      <TA value={bulk} onChange={setBulk} placeholder={"Canvas Bag, Bags, RM89\nLeather Wallet, Accessories, RM159"} rows={6}/>
+      <Label zh="批量" en="Bulk Input"/>
+      <p style={{fontSize:11, color:C.muted, margin:"8px 0 10px"}}>One per line: Name, Category, Price</p>
+      <TA value={bulk} onChange={setBulk} placeholder={"Coconut Oil 500ml, Health, 29.90\nCoconut Water, Drinks, 5.90"} rows={6}/>
     </Card>}
     <div style={{display:"flex", gap:10}}>
       <Btn onClick={generateDesc} disabled={loading||(mode==="manual"&&!form.name)||(mode==="image"&&!imgFile)||(mode==="bulk"&&!bulk)} style={{flex:1, padding:"11px"}}>
-        {loading?"Generating...":"AI Generate Description"}
+        {loading?"Generating...":"🤖 AI Generate Description"}
       </Btn>
-      {mode==="manual" && <Btn onClick={save} variant="ghost" disabled={!form.name}>Save Directly</Btn>}
     </div>
   </div>;
 
-  if(view==="generated") return <div>
+  // GENERATED VIEW
+  if (view === "generated") return <div>
     <div style={{display:"flex", alignItems:"center", gap:12, marginBottom:20}}>
       <button onClick={()=>setView("add")} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18}}>←</button>
       <Label zh="AI 生成结果" en="Generated Description"/>
@@ -607,12 +750,12 @@ const product = {
       <p style={{fontSize:13, lineHeight:1.9, color:"#C8C5BF", margin:0, whiteSpace:"pre-wrap"}}>{gen}</p>
     </Card>
     <div style={{display:"flex", gap:10}}>
-     <Btn onClick={uploadToShopify} style={{flex:1, padding:"11px"}}>🚀 Upload to Shopify</Btn>
-<Btn onClick={save} variant="ghost">Save Locally</Btn>
-<Btn onClick={()=>setView("add")} variant="ghost">Regenerate</Btn>
+      <Btn onClick={uploadToShopify} disabled={loading} style={{flex:1, padding:"11px"}}>🚀 Upload to Shopify</Btn>
+      <Btn onClick={()=>setView("add")} variant="ghost">Regenerate</Btn>
     </div>
   </div>;
 }
+
 
 function SettingsTab() {
   const [key, setKey] = useState(getApiKey());
