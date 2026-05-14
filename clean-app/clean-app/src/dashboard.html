@@ -19,12 +19,13 @@ textarea,input{color-scheme:dark}
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const {useState} = React;
+const {useState, useEffect} = React;
 
-// ── API KEY - 从浏览器本地存储读取 ────────────────────────────────
+const WORKER = "https://coco-zoho-proxy.cocoislandmart.workers.dev";
+const AIDS = {pan:"5644395000000008002", sales:"5142150000000008002"};
+
 function getApiKey() { return localStorage.getItem("coco_api_key") || ""; }
 
-// ── COLORS ────────────────────────────────────────────────────────
 const C = {
   bg:"#0A0A0F", surface:"#13131A", border:"#1E1E2A", borderHover:"#2E2E40",
   text:"#E2DDD6", muted:"#5A5A6E", accent:"#6EE7B7", accentDim:"#1A3D30",
@@ -32,32 +33,23 @@ const C = {
   blue:"#60A5FA", blueDim:"#102040",
 };
 
-// ── PROMPTS ───────────────────────────────────────────────────────
-const EMAIL_SYSTEM = `你是一个专业的电商客服助手，代表 Coco Island Mart 回复客户邮件。识别问题类型并给出专业、友好的回复。
-1. 订单状态/物流查询 - 告知1个工作日内核实，引导"我的订单"页面
-2. 退换货申请 - 确认收到，说明需提供订单号+照片，3个工作日处理
-3. 商品咨询 - 友好回答，无法确认则告知跟进
-4. 投诉/差评 - 真诚道歉，高度重视，承诺跟进
-在回复最前面用【】标注类型：订单状态/物流、退换货申请、商品咨询、投诉/差评、其他
-语言与客户一致，简洁不超200字，署名"客服团队 Customer Service"`;
+const EMAIL_SYSTEM = `You are a professional customer service representative for Coco Island Mart, an online store. Reply to customer emails in English only. Be warm, professional, and concise (under 150 words). Identify the issue type and respond accordingly:
+1. Order/Logistics - acknowledge and advise checking "My Orders" page
+2. Returns/Refunds - confirm receipt, request order number and photos, 3 business days processing
+3. Product Inquiry - answer helpfully, follow up if unsure
+4. Complaint - apologize sincerely, promise to follow up
+Sign off as: "Best regards,\nCoco Island Mart Customer Service Team"`;
 
-const PRODUCT_SYSTEM = `你是专业的电商产品文案师。根据产品信息生成吸引人的文案。
-格式：【产品标题】15字内\n【产品卖点】3个核心卖点\n【产品描述】100-150字，中英双语，用---分隔\n【SEO标签】5个关键词\n语气：专业、吸引人、突出价值`;
+const PRODUCT_SYSTEM = `You are a professional e-commerce copywriter. Generate compelling product copy based on product information.
+Format: [Product Title] under 15 words\n[Key Features] 3 core selling points\n[Product Description] 100-150 words, bilingual Chinese/English separated by ---\n[SEO Tags] 5 keywords\nTone: professional, attractive, value-focused`;
 
-const MARKETING_SYSTEM = `你是电商营销文案专家，为 Coco Island Mart 生成本地配送推广文案。要求：突出当日/次日达优势，语气亲切，中英双语。格式：先写中文版，再写English version，用---分隔。`;
+const MARKETING_SYSTEM = `You are an e-commerce marketing copywriter for Coco Island Mart. Generate local delivery promotional copy. Requirements: highlight same-day/next-day delivery advantage, friendly tone, bilingual Chinese/English. Format: Chinese version first, then English version, separated by ---.`;
 
 async function callClaude({system, userContent}) {
-  const key = getApiKey();
-  if (!key) throw new Error("请先在设置里填入 API Key");
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch(WORKER + "/claude", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
-      },
+      headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
         model: "claude-sonnet-4-5",
         max_tokens: 1000,
@@ -73,7 +65,6 @@ async function callClaude({system, userContent}) {
   }
 }
 
-// ── SHARED COMPONENTS ─────────────────────────────────────────────
 function Btn({children, onClick, variant="primary", disabled, style={}}) {
   const base = {border:"none", borderRadius:6, cursor:disabled?"not-allowed":"pointer", fontSize:12, letterSpacing:.5, padding:"8px 16px", transition:"all .15s", fontWeight:500};
   const v = {
@@ -102,11 +93,10 @@ function CopyBtn({text}) {
   const [c,setC] = useState(false);
   return <Btn variant="ghost" style={{fontSize:11, padding:"4px 12px"}}
     onClick={()=>{navigator.clipboard.writeText(text); setC(true); setTimeout(()=>setC(false),2000)}}>
-    {c?"✓ 已复制":"复制"}
+    {c?"✓ Copied":"Copy"}
   </Btn>;
 }
 
-// ── TABS ──────────────────────────────────────────────────────────
 const tabs = [
   {id:"overview", zh:"总览", en:"Overview", icon:"◈"},
   {id:"email", zh:"自动回邮", en:"Auto Email", icon:"✉"},
@@ -116,7 +106,6 @@ const tabs = [
   {id:"settings", zh:"设置", en:"Settings", icon:"⚙"},
 ];
 
-// ── OVERVIEW ──────────────────────────────────────────────────────
 function Overview({setTab}) {
   const stats = [
     {zh:"今日订单", en:"Orders Today", value:"24", delta:"+12%", color:C.accent},
@@ -153,8 +142,8 @@ function Overview({setTab}) {
       <div style={{marginTop:14, display:"flex", flexDirection:"column", gap:10}}>
         {[
           {name:"Claude AI 回邮", ok:true, status:"运行中"},
+          {name:"Zoho Mail 收件箱", ok:true, status:"已连接"},
           {name:"Shopify 本地配送", ok:true, status:"已启用"},
-          {name:"Klaviyo 邮件推广", ok:true, status:"已安装"},
         ].map((s,i) => <div key={i} style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
           <span style={{fontSize:12, color:C.text}}>{s.name}</span>
           <span style={{fontSize:11, padding:"2px 10px", borderRadius:20, background:s.ok?C.accentDim:C.warnDim, color:s.ok?C.accent:C.warn, border:`1px solid ${s.ok?"#1A4A35":"#4A3A10"}`}}>{s.status}</span>
@@ -164,72 +153,117 @@ function Overview({setTab}) {
   </div>;
 }
 
-// ── EMAIL TAB ─────────────────────────────────────────────────────
-const catColors = {
-  "订单状态/物流": {bg:C.blueDim, text:C.blue, border:"#1E3A5F"},
-  "退换货申请": {bg:C.accentDim, text:C.accent, border:"#1A4A35"},
-  "商品咨询": {bg:C.warnDim, text:C.warn, border:"#4A3A10"},
-  "投诉/差评": {bg:C.dangerDim, text:C.danger, border:"#4A1A1A"},
-  "其他": {bg:"#1A1A2A", text:"#A78BFA", border:"#2A2A4A"},
-};
-
+// ── EMAIL TAB WITH REAL ZOHO INBOX ────────────────────────────────
 function EmailTab() {
-  const [input,setInput] = useState("");
-  const [reply,setReply] = useState("");
-  const [cat,setCat] = useState("");
-  const [loading,setLoading] = useState(false);
-  const [err,setErr] = useState("");
+  const [account, setAccount] = useState("sales");
+  const [emails, setEmails] = useState([]);
+  const [loadingInbox, setLoadingInbox] = useState(false);
+  const [selectedEmail, setSelectedEmail] = useState(null);
+  const [input, setInput] = useState("");
+  const [reply, setReply] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [tokenStatus, setTokenStatus] = useState("");
 
-  const examples = [
-    {label:"物流查询", text:"你好，我的订单#8821下单3天了还没收到，请问什么情况？"},
-    {label:"退换货", text:"Hi, I received the wrong item. Order #9034. Can I exchange?"},
-    {label:"商品咨询", text:"请问这款包包有黑色吗？防水吗？"},
-    {label:"投诉", text:"非常失望！商品质量太差，要求全额退款！"},
-  ];
+  function fmt(ts) {
+    if (!ts) return "";
+    const d = new Date(parseInt(ts)), diff = Date.now() - d;
+    return diff < 86400000 ? d.toLocaleTimeString("en-US", {hour:"2-digit", minute:"2-digit"}) : d.toLocaleDateString("en-US", {month:"short", day:"numeric"});
+  }
+
+  async function loadInbox(acc) {
+    setLoadingInbox(true); setEmails([]); setSelectedEmail(null); setInput(""); setReply("");
+    try {
+      const aid = AIDS[acc];
+      const r = await fetch(`${WORKER}/zoho/accounts/${aid}/messages/view?limit=20&start=0&account=${acc}`);
+      const d = await r.json();
+      setEmails(d.data || []);
+    } catch(e) { setErr("Failed to load inbox: " + e.message); }
+    setLoadingInbox(false);
+  }
+
+  async function selectEmail(email) {
+    setSelectedEmail(email); setInput(""); setReply("");
+    try {
+      const aid = AIDS[account];
+      const r = await fetch(`${WORKER}/zoho/accounts/${aid}/messages/${email.messageId}/content?account=${account}`);
+      const d = await r.json();
+      const raw = (d.data && (d.data.content || d.data.body)) || email.summary || "";
+      const tmp = document.createElement("div"); tmp.innerHTML = raw;
+      const plain = tmp.textContent || tmp.innerText || "";
+      setInput(plain.substring(0, 600));
+    } catch { setInput(email.summary || ""); }
+  }
+
+  async function switchAccount(acc) {
+    setAccount(acc); setReply(""); setErr("");
+    await loadInbox(acc);
+  }
+
+  useEffect(() => { loadInbox("sales"); }, []);
 
   async function gen() {
-    setLoading(true); setReply(""); setCat(""); setErr("");
+    setLoading(true); setReply(""); setErr("");
     try {
-      const t = await callClaude({system:EMAIL_SYSTEM, userContent:`请回复以下客户邮件：\n\n${input}`});
-      const m = t.match(/【(.+?)】/);
-      if(m) {setCat(m[1]); setReply(t.replace(/【.+?】\n?/,"").trim());}
-      else {setReply(t.trim()); setCat("其他");}
-    } catch(e) {setErr("生成失败："+e.message);}
+      const t = await callClaude({system: EMAIL_SYSTEM, userContent: `Please reply to this customer email:\n\n${input}`});
+      setReply(t.trim());
+    } catch(e) { setErr("Generation failed: " + e.message); }
     setLoading(false);
   }
 
-  const cs = cat ? (catColors[cat] || catColors["其他"]) : null;
-
-  return <div>
-    <div style={{marginBottom:16}}>
-      <Label zh="自动回邮" en="AI Auto-Reply"/>
-      <p style={{fontSize:12, color:C.muted, margin:"6px 0 0"}}>Claude AI · Zoho Desk Integration</p>
-    </div>
-    <div style={{display:"flex", gap:8, flexWrap:"wrap", marginBottom:12}}>
-      {examples.map(ex => <button key={ex.label} onClick={()=>setInput(ex.text)}
-        style={{padding:"5px 12px", background:"transparent", border:`1px solid ${C.border}`, borderRadius:20, color:C.muted, fontSize:11, cursor:"pointer"}}>
-        {ex.label}
-      </button>)}
-    </div>
-    <div style={{marginBottom:10}}><TA value={input} onChange={setInput} placeholder="粘贴客户来信... / Paste customer email..." rows={4}/></div>
-    <Btn onClick={gen} disabled={loading||!input.trim()} style={{width:"100%", padding:"11px"}}>
-      {loading ? "AI 生成中..." : "生成自动回复 / Generate Reply"}
-    </Btn>
-    {err && <p style={{color:C.danger, fontSize:13, marginTop:10}}>{err}</p>}
-    {reply && <Card style={{marginTop:16, animation:"fadeIn .3s ease"}}>
-      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
-        <div style={{display:"flex", alignItems:"center", gap:8}}>
-          <Label zh="AI 回复" en="Reply"/>
-          {cs && <span style={{padding:"2px 10px", background:cs.bg, color:cs.text, border:`1px solid ${cs.border}`, borderRadius:20, fontSize:11}}>{cat}</span>}
-        </div>
-        <CopyBtn text={reply}/>
+  return <div style={{display:"grid", gridTemplateColumns:"220px 1fr", gap:12, minHeight:500}}>
+    {/* LEFT: Inbox */}
+    <div style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, display:"flex", flexDirection:"column", overflow:"hidden"}}>
+      <div style={{padding:"12px", borderBottom:`1px solid ${C.border}`, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+        <span style={{fontSize:11, color:C.muted, letterSpacing:1, textTransform:"uppercase"}}>Inbox</span>
+        <button onClick={()=>loadInbox(account)} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:14}}>↻</button>
       </div>
-      <p style={{fontSize:13, lineHeight:1.8, color:"#C8C5BF", margin:0, whiteSpace:"pre-wrap"}}>{reply}</p>
-    </Card>}
+      <div style={{padding:"8px", borderBottom:`1px solid ${C.border}`, display:"flex", gap:4}}>
+        {["sales","pan"].map(acc => <button key={acc} onClick={()=>switchAccount(acc)}
+          style={{flex:1, padding:"4px", borderRadius:4, cursor:"pointer", fontSize:10, border:"none", background:account===acc?C.accentDim:C.bg, color:account===acc?C.accent:C.muted}}>
+          {acc}@
+        </button>)}
+      </div>
+      <div style={{flex:1, overflowY:"auto"}}>
+        {loadingInbox && <div style={{padding:20, textAlign:"center", color:C.muted, fontSize:12}}>Loading...</div>}
+        {!loadingInbox && emails.length === 0 && <div style={{padding:20, textAlign:"center", color:C.muted, fontSize:12}}>No emails</div>}
+        {emails.map((e,i) => <div key={i} onClick={()=>selectEmail(e)}
+          style={{padding:"10px 12px", borderBottom:`1px solid ${C.border}`, cursor:"pointer", background:selectedEmail?.messageId===e.messageId?C.accentDim:C.bg, borderLeft:`2px solid ${selectedEmail?.messageId===e.messageId?C.accent:"transparent"}`}}>
+          <div style={{display:"flex", justifyContent:"space-between", marginBottom:3}}>
+            <span style={{fontSize:11, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:130}}>{e.fromAddress||e.sender||"Unknown"}</span>
+            <span style={{fontSize:10, color:C.muted, flexShrink:0}}>{fmt(e.receivedTime||e.sentDateInGMT)}</span>
+          </div>
+          <div style={{fontSize:11, color:C.muted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{e.subject||"(no subject)"}</div>
+        </div>)}
+      </div>
+    </div>
+
+    {/* RIGHT: Reply */}
+    <div>
+      <div style={{marginBottom:12}}>
+        <Label zh="自动回邮" en="AI Auto-Reply"/>
+        <p style={{fontSize:11, color:C.muted, margin:"4px 0 0"}}>Claude AI · Zoho Mail · Cloudflare 自动续期</p>
+      </div>
+      {selectedEmail && <Card style={{marginBottom:10, padding:"12px 14px"}}>
+        <div style={{fontSize:11, color:C.muted, marginBottom:3}}>From: {selectedEmail.fromAddress||selectedEmail.sender}</div>
+        <div style={{fontSize:13, color:C.text, fontWeight:500}}>{selectedEmail.subject||"(no subject)"}</div>
+      </Card>}
+      <div style={{marginBottom:10}}><TA value={input} onChange={setInput} placeholder="Select an email from inbox, or paste customer message..." rows={4}/></div>
+      <Btn onClick={gen} disabled={loading||!input.trim()} style={{width:"100%", padding:"11px", marginBottom:10}}>
+        {loading ? "Generating..." : "生成自动回复 / Generate Reply"}
+      </Btn>
+      {err && <p style={{color:C.danger, fontSize:13, marginBottom:10}}>{err}</p>}
+      {reply && <Card style={{animation:"fadeIn .3s ease"}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
+          <Label zh="AI 回复" en="Reply"/>
+          <CopyBtn text={reply}/>
+        </div>
+        <p style={{fontSize:13, lineHeight:1.8, color:"#C8C5BF", margin:0, whiteSpace:"pre-wrap"}}>{reply}</p>
+      </Card>}
+    </div>
   </div>;
 }
 
-// ── DELIVERY TAB ──────────────────────────────────────────────────
 function DeliveryTab() {
   const [zones,setZones] = useState([
     {code:"50000", city:"Kuala Lumpur", active:true, orders:12},
@@ -285,12 +319,10 @@ function DeliveryTab() {
         <input value={nci} onChange={e=>setNci(e.target.value)} placeholder="城市 / City" style={inp}/>
         <Btn onClick={()=>{if(nc&&nci){setZones([...zones,{code:nc,city:nci,active:true,orders:0}]);setNc("");setNci("");}}} disabled={!nc||!nci}>添加</Btn>
       </div>
-      <p style={{fontSize:11, color:C.muted, margin:"10px 0 0"}}>💡 城市+邮编双重验证，外城客户自动只看到邮寄选项</p>
     </Card>
   </div>;
 }
 
-// ── MARKETING TAB ─────────────────────────────────────────────────
 function MarketingTab() {
   const [sel,setSel] = useState(null);
   const [custom,setCustom] = useState("");
@@ -298,16 +330,16 @@ function MarketingTab() {
   const [loading,setLoading] = useState(false);
 
   const templates = [
-    {zh:"首页Banner", en:"Homepage Banner", prompt:"生成首页Banner文案，推广本地当日达配送服务"},
-    {zh:"邮件通知", en:"Email to Locals", prompt:"生成邮件通知现有本地客户，告知当日/次日达配送服务"},
-    {zh:"社交媒体", en:"Social Media", prompt:"生成Instagram/Facebook帖子，推广本地配送当日达，要有吸引力"},
-    {zh:"促销短信", en:"Promo SMS", prompt:"生成促销短信，通知本地客户当日达配送，不超过70字"},
+    {zh:"首页Banner", en:"Homepage Banner", prompt:"Generate homepage banner copy promoting local same-day delivery service for Coco Island Mart"},
+    {zh:"邮件通知", en:"Email to Locals", prompt:"Generate email notification to local customers about same-day/next-day delivery service"},
+    {zh:"社交媒体", en:"Social Media", prompt:"Generate Instagram/Facebook post promoting local same-day delivery, make it attractive"},
+    {zh:"促销短信", en:"Promo SMS", prompt:"Generate promotional SMS for local customers about same-day delivery, under 70 words"},
   ];
 
   async function gen(prompt) {
     setLoading(true); setResult("");
     try {setResult(await callClaude({system:MARKETING_SYSTEM, userContent:prompt}));}
-    catch(e) {setResult("生成失败："+e.message);}
+    catch(e) {setResult("Generation failed: "+e.message);}
     setLoading(false);
   }
 
@@ -342,7 +374,6 @@ function MarketingTab() {
   </div>;
 }
 
-// ── PRODUCTS TAB ──────────────────────────────────────────────────
 function ProductsTab() {
   const [products,setProducts] = useState([
     {id:1, name:"经典帆布包", price:"RM 89", stock:45, status:"active", category:"包包"},
@@ -373,27 +404,27 @@ function ProductsTab() {
       let uc;
       if(mode==="image" && imgFile) {
         const b64 = await new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.readAsDataURL(imgFile)});
-        uc = [{type:"image", source:{type:"base64", media_type:imgFile.type, data:b64}}, {type:"text", text:`请根据这张产品图片生成完整的产品文案。${imgDesc?"补充说明："+imgDesc:""}`}];
+        uc = [{type:"image", source:{type:"base64", media_type:imgFile.type, data:b64}}, {type:"text", text:`Please generate complete product copy based on this product image. ${imgDesc?"Additional notes: "+imgDesc:""}`}];
       } else if(mode==="bulk") {
-        uc = `以下是多个产品的基本信息，请为每个产品生成文案，用=====分隔：\n\n${bulk}`;
+        uc = `Here are multiple products. Generate copy for each, separated by =====:\n\n${bulk}`;
       } else {
-        uc = `产品名称：${form.name}\n类别：${form.category}\n价格：${form.price}\n关键词：${form.keywords}\n请生成完整产品文案。`;
+        uc = `Product Name: ${form.name}\nCategory: ${form.category}\nPrice: ${form.price}\nKeywords: ${form.keywords}\nPlease generate complete product copy.`;
       }
       setGen(await callClaude({system:PRODUCT_SYSTEM, userContent:uc}));
       setView("generated");
-    } catch(e) {setGen("生成失败："+e.message); setView("generated");}
+    } catch(e) {setGen("Generation failed: "+e.message); setView("generated");}
     setLoading(false);
   }
 
   function save() {
-    setProducts(p=>[{id:Date.now(), name:form.name||"新产品", price:form.price||"-", stock:parseInt(form.stock)||0, status:"draft", category:form.category||"其他"}, ...p]);
+    setProducts(p=>[{id:Date.now(), name:form.name||"New Product", price:form.price||"-", stock:parseInt(form.stock)||0, status:"draft", category:form.category||"Other"}, ...p]);
     setForm({name:"", category:"", price:"", stock:"", keywords:""}); setGen(null); setView("list");
   }
 
   if(view==="list") return <div>
     <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16}}>
-      <div><Label zh="产品管理" en="Product Manager"/><p style={{fontSize:12, color:C.muted, margin:"6px 0 0"}}>{products.length} 个产品 · AI 自动生成描述</p></div>
-      <Btn onClick={()=>setView("add")}>+ 加新产品</Btn>
+      <div><Label zh="产品管理" en="Product Manager"/><p style={{fontSize:12, color:C.muted, margin:"6px 0 0"}}>{products.length} products · AI auto-generate descriptions</p></div>
+      <Btn onClick={()=>setView("add")}>+ Add Product</Btn>
     </div>
     <div style={{display:"flex", flexDirection:"column", gap:8}}>
       {products.map(p => <div key={p.id} style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
@@ -402,13 +433,13 @@ function ProductsTab() {
           <div style={{display:"flex", gap:8, marginTop:4}}>
             <span style={{fontSize:11, color:C.muted}}>{p.category}</span>
             <span style={{fontSize:11, color:C.accent}}>{p.price}</span>
-            <span style={{fontSize:11, color:p.stock===0?C.danger:C.muted}}>{p.stock===0?"缺货":`库存 ${p.stock}`}</span>
+            <span style={{fontSize:11, color:p.stock===0?C.danger:C.muted}}>{p.stock===0?"Out of stock":`Stock: ${p.stock}`}</span>
           </div>
         </div>
         <div style={{display:"flex", gap:8, alignItems:"center"}}>
           <button onClick={()=>setProducts(products.map(x=>x.id===p.id?{...x,status:x.status==="active"?"draft":"active"}:x))}
             style={{padding:"3px 10px", borderRadius:20, fontSize:11, cursor:"pointer", border:"none", background:p.status==="active"?C.accentDim:C.border, color:p.status==="active"?C.accent:C.muted}}>
-            {p.status==="active"?"上架":"草稿"}
+            {p.status==="active"?"Active":"Draft"}
           </button>
           <button onClick={()=>setProducts(products.filter(x=>x.id!==p.id))}
             style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:16}}>×</button>
@@ -423,14 +454,14 @@ function ProductsTab() {
       <Label zh="加新产品" en="Add Product"/>
     </div>
     <div style={{display:"flex", gap:6, marginBottom:16}}>
-      {[{id:"manual",zh:"手动填写"},{id:"image",zh:"上传图片 AI"},{id:"bulk",zh:"批量上传"}].map(m =>
+      {[{id:"manual",zh:"Manual"},{id:"image",zh:"Upload Image AI"},{id:"bulk",zh:"Bulk Upload"}].map(m =>
         <button key={m.id} onClick={()=>setMode(m.id)} style={{flex:1, padding:"8px", borderRadius:6, cursor:"pointer", fontSize:11, border:"none", background:mode===m.id?C.accent:C.surface, color:mode===m.id?"#0A0A0F":C.muted}}>{m.zh}</button>
       )}
     </div>
     {mode==="manual" && <Card style={{marginBottom:12}}>
       <Label zh="产品信息" en="Product Info"/>
       <div style={{display:"flex", flexDirection:"column", gap:10, marginTop:12}}>
-        {[{key:"name",ph:"产品名称 / Product Name"},{key:"category",ph:"类别 / Category"},{key:"price",ph:"价格 / Price (e.g. RM 99)"},{key:"stock",ph:"库存 / Stock"},{key:"keywords",ph:"关键词 / Keywords"}].map(f =>
+        {[{key:"name",ph:"Product Name"},{key:"category",ph:"Category"},{key:"price",ph:"Price (e.g. RM 99)"},{key:"stock",ph:"Stock"},{key:"keywords",ph:"Keywords"}].map(f =>
           <input key={f.key} value={form[f.key]} onChange={e=>setForm(x=>({...x,[f.key]:e.target.value}))} placeholder={f.ph} style={inp}/>
         )}
       </div>
@@ -440,22 +471,22 @@ function ProductsTab() {
       <div style={{marginTop:12}}>
         <label style={{display:"block", border:`2px dashed ${C.border}`, borderRadius:8, padding:"24px", textAlign:"center", cursor:"pointer"}}>
           {imgPrev ? <img src={imgPrev} alt="preview" style={{maxHeight:160, maxWidth:"100%", borderRadius:6}}/> :
-            <div><div style={{fontSize:28, marginBottom:8}}>📷</div><div style={{fontSize:12, color:C.muted}}>点击上传产品图片</div></div>}
+            <div><div style={{fontSize:28, marginBottom:8}}>📷</div><div style={{fontSize:12, color:C.muted}}>Click to upload product image</div></div>}
           <input type="file" accept="image/*" onChange={handleImg} style={{display:"none"}}/>
         </label>
-        <div style={{marginTop:10}}><TA value={imgDesc} onChange={setImgDesc} placeholder="补充说明（可选）..." rows={2}/></div>
+        <div style={{marginTop:10}}><TA value={imgDesc} onChange={setImgDesc} placeholder="Additional notes (optional)..." rows={2}/></div>
       </div>
     </Card>}
     {mode==="bulk" && <Card style={{marginBottom:12}}>
       <Label zh="批量输入" en="Bulk Input"/>
-      <p style={{fontSize:11, color:C.muted, margin:"8px 0 10px"}}>每行一个产品，格式：产品名, 类别, 价格</p>
-      <TA value={bulk} onChange={setBulk} placeholder={"经典帆布包, 包包, RM89\n真皮钱包, 配件, RM159"} rows={6}/>
+      <p style={{fontSize:11, color:C.muted, margin:"8px 0 10px"}}>One product per line: Product Name, Category, Price</p>
+      <TA value={bulk} onChange={setBulk} placeholder={"Canvas Bag, Bags, RM89\nLeather Wallet, Accessories, RM159"} rows={6}/>
     </Card>}
     <div style={{display:"flex", gap:10}}>
       <Btn onClick={generateDesc} disabled={loading||(mode==="manual"&&!form.name)||(mode==="image"&&!imgFile)||(mode==="bulk"&&!bulk)} style={{flex:1, padding:"11px"}}>
-        {loading?"AI 生成中...":"AI 生成产品描述 / Generate"}
+        {loading?"Generating...":"AI Generate Description"}
       </Btn>
-      {mode==="manual" && <Btn onClick={save} variant="ghost" disabled={!form.name}>直接保存</Btn>}
+      {mode==="manual" && <Btn onClick={save} variant="ghost" disabled={!form.name}>Save Directly</Btn>}
     </div>
   </div>;
 
@@ -475,13 +506,12 @@ function ProductsTab() {
       <p style={{fontSize:13, lineHeight:1.9, color:"#C8C5BF", margin:0, whiteSpace:"pre-wrap"}}>{gen}</p>
     </Card>
     <div style={{display:"flex", gap:10}}>
-      <Btn onClick={save} style={{flex:1, padding:"11px"}}>保存产品 / Save Product</Btn>
-      <Btn onClick={()=>setView("add")} variant="ghost">重新生成</Btn>
+      <Btn onClick={save} style={{flex:1, padding:"11px"}}>Save Product</Btn>
+      <Btn onClick={()=>setView("add")} variant="ghost">Regenerate</Btn>
     </div>
   </div>;
 }
 
-// ── SETTINGS TAB ──────────────────────────────────────────────────
 function SettingsTab() {
   const [key, setKey] = useState(getApiKey());
   const [saved, setSaved] = useState(false);
@@ -502,51 +532,31 @@ function SettingsTab() {
   return <div>
     <div style={{marginBottom:16}}>
       <Label zh="设置" en="Settings"/>
-      <p style={{fontSize:12, color:C.muted, margin:"6px 0 0"}}>API Key 安全存储在你的浏览器本地</p>
     </div>
+    <Card style={{marginBottom:12}}>
+      <Label zh="Zoho Mail" en="Connected Accounts"/>
+      <div style={{marginTop:12, display:"flex", flexDirection:"column", gap:8}}>
+        {["sales@cocoislandmart.com","pan@cocoislandmart.com"].map((email,i) => <div key={i} style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 12px", background:C.bg, borderRadius:6}}>
+          <span style={{fontSize:12, color:C.text}}>{email}</span>
+          <span style={{fontSize:11, padding:"2px 10px", borderRadius:20, background:C.accentDim, color:C.accent, border:"1px solid #1A4A35"}}>Connected</span>
+        </div>)}
+      </div>
+    </Card>
     <Card>
-      <Label zh="Anthropic API Key" en="Claude AI Key"/>
-      <div style={{marginTop:12, display:"flex", flexDirection:"column", gap:10}}>
-        <div style={{position:"relative"}}>
-          <input
-            type={show?"text":"password"}
-            value={key}
-            onChange={e=>setKey(e.target.value)}
-            placeholder="sk-ant-..."
-            style={{width:"100%", background:C.bg, border:`1px solid ${hasKey?"#1A4A35":C.border}`, borderRadius:6, padding:"10px 40px 10px 12px", color:C.text, fontSize:12, outline:"none", boxSizing:"border-box", fontFamily:"monospace"}}
-          />
-          <button onClick={()=>setShow(!show)} style={{position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:12}}>
-            {show?"隐藏":"显示"}
-          </button>
-        </div>
-        {hasKey && <div style={{display:"flex", alignItems:"center", gap:6}}>
-          <div style={{width:7, height:7, borderRadius:"50%", background:C.accent, boxShadow:`0 0 6px ${C.accent}`}}/>
-          <span style={{fontSize:11, color:C.accent}}>API Key 已设置</span>
-        </div>}
-        <p style={{fontSize:11, color:C.muted}}>
-          💡 Key 只存在你的浏览器里，不会上传到任何服务器。从 <a href="https://platform.anthropic.com" target="_blank" style={{color:C.blue}}>platform.anthropic.com</a> 获取。
-        </p>
-        <div style={{display:"flex", gap:8}}>
-          <Btn onClick={save} disabled={!key.trim()} style={{flex:1}}>
-            {saved ? "✓ 已保存！" : "保存 API Key"}
-          </Btn>
-          {hasKey && <Btn onClick={clear} variant="ghost">清除</Btn>}
-        </div>
+      <Label zh="Cloudflare Worker" en="API Proxy"/>
+      <div style={{marginTop:10, fontSize:12, color:C.muted}}>
+        <p style={{marginBottom:6}}>Worker URL:</p>
+        <code style={{fontSize:11, color:C.accent, background:C.bg, padding:"6px 10px", borderRadius:4, display:"block"}}>{WORKER}</code>
+        <p style={{marginTop:8, fontSize:11}}>✅ Zoho Token auto-refresh enabled · ✅ Claude AI proxy enabled</p>
       </div>
     </Card>
   </div>;
 }
 
-// ── MAIN APP ──────────────────────────────────────────────────────
 function App() {
   const [activeTab,setActiveTab] = useState("overview");
-  const hasKey = getApiKey().length > 0;
 
   return <div style={{minHeight:"100vh", background:C.bg, color:C.text}}>
-    {!hasKey && <div style={{background:"#3D2010", borderBottom:`1px solid #FCD34D40`, padding:"10px 20px", display:"flex", alignItems:"center", justifyContent:"space-between"}}>
-      <span style={{fontSize:12, color:C.warn}}>⚠ 请先设置 API Key 才能使用 AI 功能</span>
-      <button onClick={()=>setActiveTab("settings")} style={{background:C.warn, border:"none", borderRadius:6, padding:"4px 12px", fontSize:11, cursor:"pointer", fontWeight:500}}>去设置</button>
-    </div>}
     <div style={{borderBottom:`1px solid ${C.border}`, padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between"}}>
       <div>
         <div style={{display:"flex", alignItems:"center", gap:8}}>
@@ -563,7 +573,7 @@ function App() {
         <span style={{marginRight:5}}>{t.icon}</span>{t.zh}
       </button>)}
     </div>
-    <div style={{padding:20, maxWidth:640, margin:"0 auto"}}>
+    <div style={{padding:20, maxWidth: activeTab==="email"?1000:640, margin:"0 auto"}}>
       {activeTab==="overview" && <Overview setTab={setActiveTab}/>}
       {activeTab==="email" && <EmailTab/>}
       {activeTab==="delivery" && <DeliveryTab/>}
