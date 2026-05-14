@@ -452,8 +452,7 @@ function ProductsTab() {
   if(view==="list") return <div>
     <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16}}>
       <div><Label zh="产品管理" en="Product Manager"/><p style={{fontSize:12, color:C.muted, margin:"6px 0 0"}}>{products.length} products · AI auto-generate descriptions</p></div>
-    <Btn onClick={uploadToShopify} style={{flex:1, padding:"11px"}}>🚀 Upload to Shopify</Btn>
-<Btn onClick={save} variant="ghost">Save Locally</Btn>
+      <Btn onClick={()=>setView("add")}>+ Add Product</Btn>
     </div>
     <div style={{display:"flex", flexDirection:"column", gap:8}}>
       {products.map(p => <div key={p.id} style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
@@ -535,8 +534,9 @@ function ProductsTab() {
       <p style={{fontSize:13, lineHeight:1.9, color:"#C8C5BF", margin:0, whiteSpace:"pre-wrap"}}>{gen}</p>
     </Card>
     <div style={{display:"flex", gap:10}}>
-      <Btn onClick={save} style={{flex:1, padding:"11px"}}>Save Product</Btn>
-      <Btn onClick={()=>setView("add")} variant="ghost">Regenerate</Btn>
+     <Btn onClick={()=>setView("add")}>+ Add Product</Btn>
+<Btn onClick={save} variant="ghost">Save Locally</Btn>
+<Btn onClick={()=>setView("add")} variant="ghost">Regenerate</Btn>
     </div>
   </div>;
 }
