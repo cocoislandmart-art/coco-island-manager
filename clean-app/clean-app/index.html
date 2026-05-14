@@ -416,15 +416,44 @@ function ProductsTab() {
     setLoading(false);
   }
 
-  function save() {
+  async function save() {
     setProducts(p=>[{id:Date.now(), name:form.name||"New Product", price:form.price||"-", stock:parseInt(form.stock)||0, status:"draft", category:form.category||"Other"}, ...p]);
     setForm({name:"", category:"", price:"", stock:"", keywords:""}); setGen(null); setView("list");
+  }
+
+  async function uploadToShopify() {
+    setLoading(true);
+    try {
+      const product = {
+        title: form.name || "New Product",
+        body_html: gen || "",
+        vendor: "Coco Island Mart",
+        product_type: form.category || "",
+        status: "draft",
+        variants: [{ price: form.price?.replace(/[^0-9.]/g,"") || "0", inventory_quantity: parseInt(form.stock)||0 }],
+        tags: form.keywords || ""
+      };
+      const res = await fetch(WORKER + "/shopify/products", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(product)
+      });
+      const data = await res.json();
+      if (data.product) {
+        alert("✅ Product uploaded to Shopify!\nID: " + data.product.id + "\nStatus: Draft - go to Shopify admin to publish.");
+        setView("list");
+      } else {
+        alert("❌ Upload failed: " + JSON.stringify(data.errors || data));
+      }
+    } catch(e) { alert("❌ Error: " + e.message); }
+    setLoading(false);
   }
 
   if(view==="list") return <div>
     <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16}}>
       <div><Label zh="产品管理" en="Product Manager"/><p style={{fontSize:12, color:C.muted, margin:"6px 0 0"}}>{products.length} products · AI auto-generate descriptions</p></div>
-      <Btn onClick={()=>setView("add")}>+ Add Product</Btn>
+    <Btn onClick={uploadToShopify} style={{flex:1, padding:"11px"}}>🚀 Upload to Shopify</Btn>
+<Btn onClick={save} variant="ghost">Save Locally</Btn>
     </div>
     <div style={{display:"flex", flexDirection:"column", gap:8}}>
       {products.map(p => <div key={p.id} style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
