@@ -382,7 +382,7 @@ function ProductsTab() {
   ]);
   const [view,setView] = useState("list");
   const [mode,setMode] = useState("manual");
-  const [form,setForm] = useState({name:"", category:"", price:"", stock:"", keywords:""});
+  const [form,setForm] = useState({name:"", category:"", price:"", comparePrice:"", stock:"", sku:"", barcode:"", weight:"", vendor:"Coco Island Mart", tags:"", keywords:""});  function generateSKU(name, category) {   const prefix = (category||"GEN").substring(0,3).toUpperCase();   const mid = (name||"PROD").replace(/\s+/g,"").substring(0,4).toUpperCase();   const num = Math.floor(Math.random()*9000)+1000;   return `${prefix}-${mid}-${num}`; }  function generateUPC() {   const digits = Array.from({length:11}, ()=>Math.floor(Math.random()*10));   const sum = digits.reduce((a,d,i)=>a+d*(i%2===0?3:1),0);   const check = (10-sum%10)%10;   return [...digits, check].join(''); }
   const [imgDesc,setImgDesc] = useState("");
   const [bulk,setBulk] = useState("");
   const [gen,setGen] = useState(null);
@@ -424,15 +424,26 @@ function ProductsTab() {
   async function uploadToShopify() {
     setLoading(true);
     try {
-      const product = {
-        title: form.name || "New Product",
-        body_html: gen || "",
-        vendor: "Coco Island Mart",
-        product_type: form.category || "",
-        status: "draft",
-        variants: [{ price: form.price?.replace(/[^0-9.]/g,"") || "0", inventory_quantity: parseInt(form.stock)||0 }],
-        tags: form.keywords || ""
-      };
+      cconst sku = form.sku || generateSKU(form.name, form.category);
+const barcode = form.barcode || generateUPC();
+const product = {
+  title: form.name || "New Product",
+  body_html: gen || "",
+  vendor: form.vendor || "Coco Island Mart",
+  product_type: form.category || "",
+  status: "draft",
+  tags: form.tags || form.keywords || "",
+  variants: [{
+    price: form.price?.replace(/[^0-9.]/g,"") || "0",
+    compare_at_price: form.comparePrice?.replace(/[^0-9.]/g,"") || undefined,
+    sku: sku,
+    barcode: barcode,
+    weight: parseFloat(form.weight)||0,
+    weight_unit: "kg",
+    inventory_quantity: parseInt(form.stock)||0,
+    inventory_management: "shopify"
+  }]
+};
       const res = await fetch(WORKER + "/shopify/products", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
@@ -489,7 +500,19 @@ function ProductsTab() {
     {mode==="manual" && <Card style={{marginBottom:12}}>
       <Label zh="产品信息" en="Product Info"/>
       <div style={{display:"flex", flexDirection:"column", gap:10, marginTop:12}}>
-        {[{key:"name",ph:"Product Name"},{key:"category",ph:"Category"},{key:"price",ph:"Price (e.g. RM 99)"},{key:"stock",ph:"Stock"},{key:"keywords",ph:"Keywords"}].map(f =>
+        {[
+  {key:"name",ph:"Product Name *"},
+  {key:"category",ph:"Category (e.g. Bags, Accessories)"},
+  {key:"price",ph:"Price (e.g. 99.90)"},
+  {key:"comparePrice",ph:"Compare at Price (original price, optional)"},
+  {key:"stock",ph:"Stock Quantity"},
+  {key:"sku",ph:"SKU (leave blank to auto-generate)"},
+  {key:"barcode",ph:"UPC/Barcode (leave blank to auto-generate)"},
+  {key:"weight",ph:"Weight (e.g. 0.5 kg)"},
+  {key:"vendor",ph:"Vendor/Brand"},
+  {key:"tags",ph:"Tags (comma separated)"},
+  {key:"keywords",ph:"SEO Keywords"}
+].map(f =>
           <input key={f.key} value={form[f.key]} onChange={e=>setForm(x=>({...x,[f.key]:e.target.value}))} placeholder={f.ph} style={inp}/>
         )}
       </div>
