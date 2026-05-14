@@ -40,8 +40,34 @@ const EMAIL_SYSTEM = `You are a professional customer service representative for
 4. Complaint - apologize sincerely, promise to follow up
 Sign off as: "Best regards,\nCoco Island Mart Customer Service Team"`;
 
-const PRODUCT_SYSTEM = `You are a professional e-commerce copywriter. Generate compelling product copy based on product information.
-Format: [Product Title] under 15 words\n[Key Features] 3 core selling points\n[Product Description] 100-150 words, bilingual Chinese/English separated by ---\n[SEO Tags] 5 keywords\nTone: professional, attractive, value-focused`;
+const PRODUCT_SYSTEM = `You are a professional e-commerce copywriter and SEO expert specializing in high-converting product listings. Generate compelling product copy based on product information.
+
+Format your response EXACTLY as follows:
+
+[Product Title]
+Write a compelling title under 15 words with primary keyword first
+
+[Key Features]
+- Feature 1: specific benefit
+- Feature 2: specific benefit  
+- Feature 3: specific benefit
+
+[Product Description]
+Write 100-150 words in English focusing on benefits and lifestyle appeal
+---
+用100-150字写中文版本，强调产品价值和生活方式
+
+[High-Traffic SEO Keywords]
+Primary: (highest search volume keyword)
+Secondary: keyword2, keyword3, keyword4, keyword5
+Long-tail: "exact phrase buyers search for", "another buyer phrase"
+Tags: tag1, tag2, tag3, tag4, tag5, tag6, tag7, tag8, tag9, tag10
+
+[Suggested Price Range]
+Based on market research, suggest competitive price range
+
+Tone: professional, conversion-focused, highlight unique value proposition`;
+
 
 const MARKETING_SYSTEM = `You are an e-commerce marketing copywriter for Coco Island Mart. Generate local delivery promotional copy. Requirements: highlight same-day/next-day delivery advantage, friendly tone, bilingual Chinese/English. Format: Chinese version first, then English version, separated by ---.`;
 
@@ -382,7 +408,21 @@ function ProductsTab() {
   ]);
   const [view,setView] = useState("list");
   const [mode,setMode] = useState("manual");
-  const [form,setForm] = useState({name:"", category:"", price:"", stock:"", keywords:""});
+  const [form,setForm] = useState({name:"", category:"", price:"", comparePrice:"", stock:"", sku:"", barcode:"", weight:"", vendor:"Coco Island Mart", tags:"", keywords:""});
+
+function generateSKU(name, category) {
+  const prefix = (category||"GEN").substring(0,3).toUpperCase();
+  const mid = (name||"PROD").replace(/\s+/g,"").substring(0,4).toUpperCase();
+  const num = Math.floor(Math.random()*9000)+1000;
+  return `${prefix}-${mid}-${num}`;
+}
+
+function generateUPC() {
+  const digits = Array.from({length:11}, ()=>Math.floor(Math.random()*10));
+  const sum = digits.reduce((a,d,i)=>a+d*(i%2===0?3:1),0);
+  const check = (10-sum%10)%10;
+  return [...digits, check].join('');
+}
   const [imgDesc,setImgDesc] = useState("");
   const [bulk,setBulk] = useState("");
   const [gen,setGen] = useState(null);
@@ -410,8 +450,18 @@ function ProductsTab() {
       } else {
         uc = `Product Name: ${form.name}\nCategory: ${form.category}\nPrice: ${form.price}\nKeywords: ${form.keywords}\nPlease generate complete product copy.`;
       }
-      setGen(await callClaude({system:PRODUCT_SYSTEM, userContent:uc}));
-      setView("generated");
+      const result = await callClaude({system:PRODUCT_SYSTEM, userContent:uc});
+setGen(result);
+// Auto-extract and fill keywords
+const keywordMatch = result.match(/\[High-Traffic SEO Keywords\]([\s\S]*?)\[/);
+if (keywordMatch) {
+  const kwSection = keywordMatch[1];
+  const tagsMatch = kwSection.match(/Tags:\s*(.+)/);
+  if (tagsMatch) setForm(f=>({...f, tags: tagsMatch[1].trim()}));
+  const primaryMatch = kwSection.match(/Primary:\s*(.+)/);
+  if (primaryMatch) setForm(f=>({...f, keywords: primaryMatch[1].trim()}));
+}
+setView("generated");
     } catch(e) {setGen("Generation failed: "+e.message); setView("generated");}
     setLoading(false);
   }
@@ -424,15 +474,26 @@ function ProductsTab() {
   async function uploadToShopify() {
     setLoading(true);
     try {
-      const product = {
-        title: form.name || "New Product",
-        body_html: gen || "",
-        vendor: "Coco Island Mart",
-        product_type: form.category || "",
-        status: "draft",
-        variants: [{ price: form.price?.replace(/[^0-9.]/g,"") || "0", inventory_quantity: parseInt(form.stock)||0 }],
-        tags: form.keywords || ""
-      };
+      const sku = form.sku || generateSKU(form.name, form.category);
+const barcode = form.barcode || generateUPC();
+const product = {
+  title: form.name || "New Product",
+  body_html: gen || "",
+  vendor: form.vendor || "Coco Island Mart",
+  product_type: form.category || "",
+  status: "draft",
+  tags: form.tags || form.keywords || "",
+  variants: [{
+    price: form.price?.replace(/[^0-9.]/g,"") || "0",
+    compare_at_price: form.comparePrice?.replace(/[^0-9.]/g,"") || undefined,
+    sku: sku,
+    barcode: barcode,
+    weight: parseFloat(form.weight)||0,
+    weight_unit: "kg",
+    inventory_quantity: parseInt(form.stock)||0,
+    inventory_management: "shopify"
+  }]
+};
       const res = await fetch(WORKER + "/shopify/products", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
@@ -489,7 +550,19 @@ function ProductsTab() {
     {mode==="manual" && <Card style={{marginBottom:12}}>
       <Label zh="产品信息" en="Product Info"/>
       <div style={{display:"flex", flexDirection:"column", gap:10, marginTop:12}}>
-        {[{key:"name",ph:"Product Name"},{key:"category",ph:"Category"},{key:"price",ph:"Price (e.g. RM 99)"},{key:"stock",ph:"Stock"},{key:"keywords",ph:"Keywords"}].map(f =>
+       {[
+  {key:"name",ph:"Product Name *"},
+  {key:"category",ph:"Category (e.g. Bags, Accessories)"},
+  {key:"price",ph:"Price (e.g. 99.90)"},
+  {key:"comparePrice",ph:"Compare at Price (original price, optional)"},
+  {key:"stock",ph:"Stock Quantity"},
+  {key:"sku",ph:"SKU (leave blank to auto-generate)"},
+  {key:"barcode",ph:"UPC/Barcode (leave blank to auto-generate)"},
+  {key:"weight",ph:"Weight (e.g. 0.5 kg)"},
+  {key:"vendor",ph:"Vendor/Brand"},
+  {key:"tags",ph:"Tags (comma separated)"},
+  {key:"keywords",ph:"SEO Keywords"}
+].map(f =>
           <input key={f.key} value={form[f.key]} onChange={e=>setForm(x=>({...x,[f.key]:e.target.value}))} placeholder={f.ph} style={inp}/>
         )}
       </div>
