@@ -80,6 +80,39 @@ Rules:
 - sku: extract exact SKU/item code from invoice
 - unit_cost: cost per single unit in USD`;
 
+const AUTO_CLASSIFY_SYSTEM = `You are an e-commerce product categorization expert for Coco Island Mart, an Asian grocery and lifestyle store.
+Given a list of product titles, classify each one into a product_type and generate relevant tags.
+
+Return ONLY a valid JSON array (no markdown, no explanation):
+[
+  {
+    "id": "shopify_product_id",
+    "product_type": "Category Name",
+    "tags": "tag1, tag2, tag3, tag4, tag5"
+  }
+]
+
+Rules for product_type (pick the most specific fit):
+- Tea: any tea, herbal tea, green tea, oolong, etc.
+- Coffee: coffee, espresso, instant coffee
+- Bubble Tea: boba, bubble tea, tapioca, pearl milk tea
+- Snacks: chips, crackers, biscuits, cookies, candy, jerky, dried fruit
+- Instant Food: instant noodles, instant soup, ramen, cup noodles
+- Soup & Broth: soup base, broth, hotpot, congee
+- Beverages: juice, soda, energy drink, water, drink mix
+- Health Supplements: vitamins, supplements, collagen, bird nest, ginseng
+- Dried Goods: dried mushroom, dried seafood, dried herbs, rice, flour, grain
+- Sauces & Condiments: sauce, paste, seasoning, spice, oil, vinegar
+- Skincare & Beauty: skincare, cream, mask, beauty, cosmetics
+- Household: cleaning, household, kitchen tool, container
+- Gift Cards: gift card, voucher, e-gift
+- Other: anything that doesn't fit above
+
+Rules for tags:
+- 5-8 relevant tags per product
+- Include: category keyword, flavor/type, brand if visible, use case
+- All lowercase, comma separated`;
+
 async function callClaude({system, userContent}) {
   const res = await fetch(WORKER + "/claude", {
     method: "POST",
@@ -523,12 +556,84 @@ function ProductsTab() {
     setGenLoading(false);
   }
 
+  const [classifying, setClassifying] = useState(false);
+  const [classifyResult, setClassifyResult] = useState(null);
+  const [classifyProgress, setClassifyProgress] = useState({done:0, total:0});
+
+  async function autoClassifyAll() {
+    if (!products.length) return;
+    setClassifying(true); setClassifyResult(null);
+    const BATCH = 20; // process 20 products per AI call
+    let done = 0, failed = 0;
+    setClassifyProgress({done:0, total:products.length});
+
+    for (let i = 0; i < products.length; i += BATCH) {
+      const batch = products.slice(i, i + BATCH);
+      try {
+        const list = batch.map(p => `{"id":"${p.id}","title":"${p.title.replace(/"/g,"'")}"}`).join("\n");
+        const result = await callClaude({
+          system: AUTO_CLASSIFY_SYSTEM,
+          userContent: `Classify these products:\n${list}`
+        });
+        const clean = result.replace(/```json|```/g,"").trim();
+        const classifications = JSON.parse(clean);
+
+        for (const c of classifications) {
+          try {
+            await fetch(`${WORKER}/shopify/products/${c.id}`, {
+              method:"PUT",
+              headers:{"Content-Type":"application/json"},
+              body: JSON.stringify({product:{id:c.id, product_type:c.product_type, tags:c.tags}})
+            });
+            done++;
+          } catch(e) { failed++; }
+          await new Promise(r => setTimeout(r, 200));
+        }
+      } catch(e) { failed += batch.length; }
+      setClassifyProgress({done: Math.min(i+BATCH, products.length), total:products.length});
+    }
+
+    setClassifying(false);
+    setClassifyResult({done, failed, total:products.length});
+    await loadProducts();
+  }
+
+  const [activating, setActivating] = useState(false);
+  const [activateResult, setActivateResult] = useState(null);
+
+  async function autoActivateInStock() {
+    const toActivate = products.filter(p =>
+      p.status === "draft" && (p.variants||[]).some(v => (v.inventory_quantity||0) > 0)
+    );
+    if (!toActivate.length) { alert("没有符合条件的产品（Draft + 有库存）"); return; }
+    setActivating(true); setActivateResult(null);
+    let done = 0, failed = 0;
+    for (const p of toActivate) {
+      try {
+        await fetch(`${WORKER}/shopify/products/${p.id}`, {
+          method:"PUT",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({product:{id:p.id, status:"active"}})
+        });
+        done++;
+      } catch(e) { failed++; }
+      await new Promise(r => setTimeout(r, 250));
+    }
+    setActivating(false);
+    setActivateResult({done, failed, total:toActivate.length});
+    await loadProducts();
+  }
+
   const stalePct = products.length ? Math.round(staleProducts.length/products.length*100) : 0;
   const staleCount = products.filter(p => {
     if (p.status !== "draft") return false;
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-60);
     return new Date(p.created_at) < cutoff;
   }).length;
+
+  const inStockDraftCount = products.filter(p =>
+    p.status === "draft" && (p.variants||[]).some(v => (v.inventory_quantity||0) > 0)
+  ).length;
 
   const filtered = products.filter(p => {
     const ms = filterStatus==="all" || p.status===filterStatus;
@@ -616,12 +721,38 @@ function ProductsTab() {
       </div>
       <div style={{display:"flex", gap:8, flexWrap:"wrap", justifyContent:"flex-end"}}>
         <Btn variant="ghost" onClick={loadProducts}>↻ Refresh</Btn>
+        <Btn onClick={autoClassifyAll} disabled={classifying||!products.length} style={{fontSize:13, background:C.purple, color:"#fff"}}>
+          {classifying ? `分类中 ${classifyProgress.done}/${classifyProgress.total}...` : "🏷 AI 自动分类"}
+        </Btn>
+        {inStockDraftCount > 0 && <Btn onClick={autoActivateInStock} disabled={activating} style={{fontSize:13, background:C.blue, color:"#fff"}}>
+          {activating ? "激活中..." : `✦ 激活 ${inStockDraftCount} 个有库存Draft`}
+        </Btn>}
         {staleCount > 0 && <Btn variant="danger" onClick={findStaleProducts} style={{fontSize:13}}>
           🗑 {staleCount} 个过期Draft
         </Btn>}
         <Btn onClick={()=>setView("add")}>+ Add Product</Btn>
       </div>
     </div>
+
+    {classifying && <div style={{marginBottom:12, padding:"12px 16px", background:C.purpleDim, border:`1px solid #DDD6FE`, borderRadius:8}}>
+      <div style={{fontSize:14, color:C.purple, marginBottom:6}}>🏷 AI 分类中，请稍候...</div>
+      <div style={{background:"#DDD6FE", borderRadius:4, height:6}}>
+        <div style={{background:C.purple, height:6, borderRadius:4, width:`${classifyProgress.total?classifyProgress.done/classifyProgress.total*100:0}%`, transition:"width .3s"}}/>
+      </div>
+      <div style={{fontSize:12, color:C.muted, marginTop:4}}>{classifyProgress.done} / {classifyProgress.total} 产品已处理（每20个批量调用AI）</div>
+    </div>}
+    {classifyResult && <div style={{marginBottom:12, padding:"12px 16px", background:C.purpleDim, border:`1px solid #DDD6FE`, borderRadius:8, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+      <span style={{fontSize:14, color:C.purple}}>
+        🏷 分类完成：{classifyResult.done} 个成功{classifyResult.failed>0?` · ${classifyResult.failed} 个失败`:""}
+      </span>
+      <button onClick={()=>setClassifyResult(null)} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18}}>×</button>
+    </div>}
+    {activateResult && <div style={{marginBottom:12, padding:"12px 16px", background:activateResult.failed?C.warnDim:C.accentDim, border:`1px solid ${activateResult.failed?"#FDE68A":"#A7F3D0"}`, borderRadius:8, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+      <span style={{fontSize:14, color:activateResult.failed?C.warn:C.accent}}>
+        ✓ 成功激活 {activateResult.done} 个产品上市{activateResult.failed>0?` · ${activateResult.failed} 个失败`:""}
+      </span>
+      <button onClick={()=>setActivateResult(null)} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18}}>×</button>
+    </div>}
 
     <div style={{display:"flex", gap:8, marginBottom:12}}>
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search products..." style={{flex:1, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"9px 12px", color:C.text, fontSize:14, outline:"none"}}/>
@@ -651,6 +782,7 @@ function ProductsTab() {
                 <span style={{fontSize:13, color:C.accent, fontWeight:500}}>${v.price}</span>
                 <span style={{fontSize:13, color:stock===0?C.danger:stock<5?C.warn:C.muted}}>Stock: {stock}</span>
                 {v.sku && <span style={{fontSize:12, color:C.muted}}>SKU: {v.sku}</span>}
+                {p.product_type && <span style={{fontSize:12, padding:"1px 8px", borderRadius:10, background:C.purpleDim, color:C.purple, border:`1px solid #DDD6FE`}}>{p.product_type}</span>}
                 {isStale && <span style={{fontSize:12, color:C.danger}}>⚠ 草稿 {daysOld}天</span>}
               </div>
             </div>
