@@ -113,13 +113,13 @@ Rules for tags:
 - Include: category keyword, flavor/type, brand if visible, use case
 - All lowercase, comma separated`;
 
-async function callClaude({system, userContent}) {
+async function callClaude({system, userContent, max_tokens=1000}) {
   const res = await fetch(WORKER + "/claude", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({
       model: "claude-sonnet-4-5",
-      max_tokens: 1000,
+      max_tokens,
       system,
       messages: [{role:"user", content: userContent}]
     })
@@ -918,7 +918,7 @@ function InvoiceTab() {
           : {type:"image", source:{type:"base64", media_type:mediaType, data:b64}},
         {type:"text", text:"Extract all invoice data and return as JSON only."}
       ];
-      const result = await callClaude({system: INVOICE_SYSTEM, userContent});
+      const result = await callClaude({system: INVOICE_SYSTEM, userContent, max_tokens: 4000});
       const clean = result.replace(/```json|```/g,"").trim();
       const data = JSON.parse(clean);
       setParsed(data);
