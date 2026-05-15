@@ -927,13 +927,11 @@ function InvoiceTab() {
     } catch(e) { alert("❌ Failed to parse invoice: " + e.message); }
     setParsing(false);
   }
-
   function matchWithShopify(data) {
     setMatching(true);
+    const totalWeight = (data.items||[]).reduce((a,x)=>a+(x.weight_kg||0.3)*x.quantity, 0);
     const items = (data.items || []).map(item => {
-      // Find matching Shopify product by SKU
-      let shopifyProduct = null;
-      let shopifyVariant = null;
+      let shopifyProduct = null, shopifyVariant = null;
       for (const p of shopifyProducts) {
         for (const v of (p.variants||[])) {
           if (v.sku && item.sku && v.sku.toLowerCase().trim() === item.sku.toLowerCase().trim()) {
@@ -942,41 +940,33 @@ function InvoiceTab() {
         }
         if (shopifyProduct) break;
       }
-
-      // Calculate shipping share
-      const totalWeight = (data.items||[]).reduce((a,x)=>a+(x.weight_kg||0.3)*x.quantity, 0);
       const itemWeight = (item.weight_kg||0.3) * item.quantity;
       const weightRatio = totalWeight > 0 ? itemWeight/totalWeight : 1/(data.items||[]).length;
-
       let shippingCost = 0;
-      if (shippingMode === "invoice") {
-        shippingCost = (data.shipping_cost||0) * weightRatio;
-      } else if (shippingMode === "manual") {
-        shippingCost = (parseFloat(manualShipping)||0) * weightRatio;
-      } else {
-        const totalEstimated = estimateShipping(carrier, totalWeight, "");
-        shippingCost = totalEstimated * weightRatio;
-      }
+      if (shippingMode === "invoice") shippingCost = (data.shipping_cost||0) * weightRatio;
+      else if (shippingMode === "manual") shippingCost = (parseFloat(manualShipping)||0) * weightRatio;
+      else shippingCost = estimateShipping(carrier, totalWeight, "") * weightRatio;
 
       const unitShipping = item.quantity > 0 ? shippingCost / item.quantity : 0;
       const totalCostPerUnit = (item.unit_cost||0) + unitShipping;
       const suggestedPrice = Math.ceil(totalCostPerUnit * MARKUP * 100) / 100;
       const currentPrice = shopifyVariant ? parseFloat(shopifyVariant.price||0) : 0;
       const currentStock = shopifyVariant ? (shopifyVariant.inventory_quantity||0) : 0;
+      const isNew = !shopifyVariant;
 
       return {
         ...item,
-        shopifyProduct,
-        shopifyVariant,
-        matched: !!shopifyVariant,
+        shopifyProduct, shopifyVariant,
+        matched: !isNew, isNew,
         unitShipping: unitShipping.toFixed(3),
         totalCostPerUnit: totalCostPerUnit.toFixed(2),
         suggestedPrice: suggestedPrice.toFixed(2),
         currentPrice: currentPrice.toFixed(2),
-        currentStock,
-        newStock: currentStock + (item.quantity||0),
+        currentStock, newStock: currentStock + (item.quantity||0),
         usePrice: suggestedPrice.toFixed(2),
-        include: !!shopifyVariant,
+        include: true, // include all by default (both new and existing)
+        imageUrl: "", // will be searched
+        imageSearching: false,
       };
     });
     setMatched(items);
@@ -987,36 +977,80 @@ function InvoiceTab() {
     setMatched(prev => prev.map((m,i) => i===idx ? {...m, [key]:val} : m));
   }
 
+  async function searchImageForItem(idx, query) {
+    updateItem(idx, "imageSearching", true);
+    try {
+      // Use Bing image search via a CORS-friendly approach
+      const searchUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(query+" product")}&form=HDRSC2&first=1`;
+      // Fallback: use a product image search API via Claude
+      const result = await callClaude({
+        system: `You are a product image finder. Given a product name, return a direct image URL from a reputable source (Amazon, manufacturer website, or major retailer). Return ONLY the raw image URL, nothing else. The URL must end in .jpg, .jpeg, .png, or .webp. If you cannot find one, return "none".`,
+        userContent: `Find a product image URL for: ${query}`
+      });
+      const url = result.trim();
+      updateItem(idx, "imageUrl", url === "none" ? "" : url);
+    } catch(e) { console.error(e); }
+    updateItem(idx, "imageSearching", false);
+  }
+
   async function applyUpdates() {
-    const toUpdate = matched.filter(m => m.include && m.matched);
-    if (!toUpdate.length) { alert("No matched products to update."); return; }
+    const toProcess = matched.filter(m => m.include);
+    if (!toProcess.length) { alert("没有选中的产品"); return; }
     setUpdating(true);
-    setUpdateProgress({done:0, total:toUpdate.length});
+    setUpdateProgress({done:0, total:toProcess.length});
     setUpdateResults([]);
     const results = [];
     let done = 0;
-    for (const item of toUpdate) {
+    for (const item of toProcess) {
       try {
-        // Update price
-        await fetch(`${WORKER}/shopify/variants/${item.shopifyVariant.id}`, {
-          method:"PUT",
-          headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({variant:{id:item.shopifyVariant.id, price:item.usePrice, inventory_quantity:item.newStock}})
-        });
-        results.push({sku:item.sku, title:item.shopifyProduct.title, status:"success", price:item.usePrice, stock:item.newStock});
+        if (item.isNew) {
+          // CREATE new product
+          const productPayload = {
+            title: item.description,
+            status: "draft",
+            vendor: parsed?.supplier || "Coco Island Mart",
+            variants: [{
+              sku: item.sku || "",
+              price: item.usePrice,
+              inventory_quantity: item.quantity||0,
+              inventory_management: "shopify",
+              weight: item.weight_kg||0.3,
+              weight_unit: "kg"
+            }]
+          };
+          // Add image if found
+          if (item.imageUrl && item.imageUrl.startsWith("http")) {
+            productPayload.images = [{src: item.imageUrl}];
+          }
+          const res = await fetch(`${WORKER}/shopify/products`, {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify(productPayload)
+          });
+          const data = await res.json();
+          if (data.product) results.push({sku:item.sku, title:item.description, status:"created", price:item.usePrice, stock:item.quantity, isNew:true});
+          else results.push({sku:item.sku, title:item.description, status:"error", error:JSON.stringify(data.errors||data), isNew:true});
+        } else {
+          // UPDATE existing product
+          await fetch(`${WORKER}/shopify/variants/${item.shopifyVariant.id}`, {
+            method:"PUT",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({variant:{id:item.shopifyVariant.id, price:item.usePrice, inventory_quantity:item.newStock}})
+          });
+          results.push({sku:item.sku, title:item.shopifyProduct.title, status:"updated", price:item.usePrice, stock:item.newStock, isNew:false});
+        }
       } catch(e) {
-        results.push({sku:item.sku, title:item.description, status:"error", error:e.message});
+        results.push({sku:item.sku, title:item.description, status:"error", error:e.message, isNew:item.isNew});
       }
       done++;
-      setUpdateProgress({done, total:toUpdate.length});
-      await new Promise(r => setTimeout(r, 250));
+      setUpdateProgress({done, total:toProcess.length});
+      await new Promise(r => setTimeout(r, 300));
     }
     setUpdateResults(results);
     setUpdating(false);
     setStep(4);
   }
 
-  const totalShipping = parsed?.shipping_cost || 0;
   const estimatedShipping = parsed ? estimateShipping(carrier, (parsed.items||[]).reduce((a,x)=>a+(x.weight_kg||0.3)*x.quantity,0), "") : 0;
 
   return <div>
@@ -1094,45 +1128,63 @@ function InvoiceTab() {
       <div style={{marginBottom:12}}>
         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
           <Label zh="产品明细" en="Line Items"/>
-          <span style={{fontSize:13, color:C.muted}}>{matched.filter(m=>m.matched).length}/{matched.length} 匹配到Shopify</span>
+          <div style={{display:"flex", gap:12, fontSize:13}}>
+            <span style={{color:C.accent}}>✓ {matched.filter(m=>m.matched).length} 已有产品</span>
+            <span style={{color:C.blue}}>✦ {matched.filter(m=>m.isNew).length} 新产品</span>
+          </div>
         </div>
         <div style={{display:"flex", flexDirection:"column", gap:8}}>
-          {matched.map((item, idx) => <Card key={idx} style={{border:`1px solid ${item.matched?C.border:"#FECACA"}`, background:item.matched?C.surface:C.dangerDim}}>
+          {matched.map((item, idx) => <Card key={idx} style={{border:`1px solid ${item.isNew?"#BFDBFE":C.border}`, background:item.isNew?C.blueDim:C.surface}}>
             <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10}}>
               <div style={{flex:1}}>
-                <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:4}}>
+                <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:4, flexWrap:"wrap"}}>
                   <input type="checkbox" checked={item.include} onChange={e=>updateItem(idx,"include",e.target.checked)} style={{width:16, height:16, accentColor:C.accent}}/>
                   <span style={{fontSize:15, color:C.text, fontWeight:500}}>{item.description}</span>
-                  {item.matched ? <span style={{fontSize:11, padding:"2px 8px", borderRadius:10, background:C.accentDim, color:C.accent}}>✓ 已匹配</span>
-                    : <span style={{fontSize:11, padding:"2px 8px", borderRadius:10, background:C.dangerDim, color:C.danger}}>✗ SKU未找到</span>}
+                  {item.isNew
+                    ? <span style={{fontSize:11, padding:"2px 8px", borderRadius:10, background:"#DBEAFE", color:C.blue}}>✦ 新产品</span>
+                    : <span style={{fontSize:11, padding:"2px 8px", borderRadius:10, background:C.accentDim, color:C.accent}}>✓ 已有产品</span>}
                 </div>
                 <div style={{display:"flex", gap:12, fontSize:13, color:C.muted, flexWrap:"wrap"}}>
                   <span>SKU: <strong style={{color:C.text}}>{item.sku||"—"}</strong></span>
                   <span>数量: <strong style={{color:C.text}}>{item.quantity}</strong></span>
                   <span>来货价: <strong style={{color:C.text}}>${item.unit_cost}</strong></span>
                   <span>分摊运费: <strong style={{color:C.blue}}>${item.unitShipping}</strong></span>
-                  <span>总成本/件: <strong style={{color:C.text}}>${item.totalCostPerUnit}</strong></span>
+                  <span>成本/件: <strong style={{color:C.text}}>${item.totalCostPerUnit}</strong></span>
                 </div>
               </div>
             </div>
-            {item.matched && <div style={{display:"flex", gap:12, alignItems:"center", padding:"10px 12px", background:C.bg, borderRadius:8}}>
+
+            {/* Price + Stock row */}
+            <div style={{display:"flex", gap:12, alignItems:"flex-start", padding:"10px 12px", background:"rgba(255,255,255,0.7)", borderRadius:8, marginBottom:item.isNew?10:0}}>
               <div style={{flex:1}}>
-                <div style={{fontSize:12, color:C.muted, marginBottom:4}}>建议售价 (×{MARKUP})</div>
-                <div style={{display:"flex", alignItems:"center", gap:8}}>
+                <div style={{fontSize:12, color:C.muted, marginBottom:4}}>售价 (×{MARKUP})</div>
+                <div style={{display:"flex", alignItems:"center", gap:6}}>
                   <span style={{fontSize:13, color:C.muted}}>$</span>
                   <input type="number" value={item.usePrice} onChange={e=>updateItem(idx,"usePrice",e.target.value)} step="0.01" style={{width:90, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"6px 8px", color:C.text, fontSize:14, outline:"none"}}/>
-                  <span style={{fontSize:12, color:C.muted}}>现价: ${item.currentPrice}</span>
-                  {parseFloat(item.usePrice) !== parseFloat(item.currentPrice) && <span style={{fontSize:12, color:parseFloat(item.usePrice)>parseFloat(item.currentPrice)?C.accent:C.warn}}>
-                    {parseFloat(item.usePrice)>parseFloat(item.currentPrice)?"↑":"↓"} ${Math.abs(parseFloat(item.usePrice)-parseFloat(item.currentPrice)).toFixed(2)}
-                  </span>}
+                  {!item.isNew && <span style={{fontSize:12, color:C.muted}}>现价: ${item.currentPrice}</span>}
                 </div>
               </div>
               <div style={{flex:1}}>
-                <div style={{fontSize:12, color:C.muted, marginBottom:4}}>新库存</div>
-                <div style={{display:"flex", alignItems:"center", gap:8}}>
+                <div style={{fontSize:12, color:C.muted, marginBottom:4}}>{item.isNew?"入库数量":"新库存"}</div>
+                <div style={{display:"flex", alignItems:"center", gap:6}}>
                   <input type="number" value={item.newStock} onChange={e=>updateItem(idx,"newStock",parseInt(e.target.value)||0)} style={{width:80, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"6px 8px", color:C.text, fontSize:14, outline:"none"}}/>
-                  <span style={{fontSize:12, color:C.muted}}>现有: {item.currentStock} + {item.quantity} = {item.newStock}</span>
+                  {!item.isNew && <span style={{fontSize:12, color:C.muted}}>{item.currentStock}+{item.quantity}={item.newStock}</span>}
                 </div>
+              </div>
+            </div>
+
+            {/* Image search for new products */}
+            {item.isNew && <div style={{padding:"10px 12px", background:"rgba(255,255,255,0.7)", borderRadius:8}}>
+              <div style={{fontSize:12, color:C.muted, marginBottom:8}}>产品图片（网络搜索）</div>
+              <div style={{display:"flex", gap:8, alignItems:"center"}}>
+                {item.imageUrl && item.imageUrl.startsWith("http") &&
+                  <img src={item.imageUrl} alt="" style={{width:56, height:56, objectFit:"cover", borderRadius:6, border:`1px solid ${C.border}`}}
+                    onError={e=>{e.target.style.display="none";}}/>}
+                <input value={item.imageUrl} onChange={e=>updateItem(idx,"imageUrl",e.target.value)} placeholder="图片URL（可手动填写）" style={{flex:1, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"7px 10px", color:C.text, fontSize:13, outline:"none"}}/>
+                <Btn variant="ghost" style={{fontSize:12, padding:"6px 12px", whiteSpace:"nowrap"}} disabled={item.imageSearching}
+                  onClick={()=>searchImageForItem(idx, item.description)}>
+                  {item.imageSearching?"搜索中...":"🔍 搜图"}
+                </Btn>
               </div>
             </div>}
           </Card>)}
@@ -1140,8 +1192,8 @@ function InvoiceTab() {
       </div>
 
       <div style={{display:"flex", gap:10}}>
-        <Btn onClick={()=>{setStep(3);}} disabled={!matched.some(m=>m.include&&m.matched)} style={{flex:1, padding:"12px"}}>
-          确认更新 {matched.filter(m=>m.include&&m.matched).length} 个产品 →
+        <Btn onClick={()=>setStep(3)} disabled={!matched.some(m=>m.include)} style={{flex:1, padding:"12px"}}>
+          确认处理 {matched.filter(m=>m.include).length} 个产品 →
         </Btn>
         <Btn variant="ghost" onClick={()=>setStep(1)}>← 重新上传</Btn>
       </div>
@@ -1149,54 +1201,67 @@ function InvoiceTab() {
 
     {/* STEP 3: Confirm */}
     {step===3 && <Card>
-      <Label zh="确认更新" en="Confirm Updates"/>
+      <Label zh="确认处理" en="Confirm"/>
       <div style={{marginTop:16, display:"flex", flexDirection:"column", gap:8}}>
-        {matched.filter(m=>m.include&&m.matched).map((item,i) => <div key={i} style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", background:C.bg, borderRadius:8}}>
+        {matched.filter(m=>m.include).map((item,i) => <div key={i} style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", background:item.isNew?C.blueDim:C.bg, borderRadius:8, border:`1px solid ${item.isNew?"#BFDBFE":C.border}`}}>
           <div>
-            <div style={{fontSize:14, color:C.text, fontWeight:500}}>{item.shopifyProduct?.title}</div>
-            <div style={{fontSize:12, color:C.muted}}>SKU: {item.sku}</div>
+            <div style={{display:"flex", alignItems:"center", gap:8}}>
+              <span style={{fontSize:11, padding:"1px 8px", borderRadius:10, background:item.isNew?"#DBEAFE":C.accentDim, color:item.isNew?C.blue:C.accent}}>
+                {item.isNew?"✦ 新建":"✓ 更新"}
+              </span>
+              <span style={{fontSize:14, color:C.text, fontWeight:500}}>{item.isNew?item.description:item.shopifyProduct?.title}</span>
+            </div>
+            <div style={{fontSize:12, color:C.muted, marginTop:2}}>SKU: {item.sku||"—"} · 数量: {item.quantity}</div>
           </div>
           <div style={{textAlign:"right"}}>
-            <div style={{fontSize:14, color:C.accent}}>${item.usePrice} <span style={{fontSize:12, color:C.muted}}>← ${item.currentPrice}</span></div>
-            <div style={{fontSize:13, color:C.blue}}>库存: {item.currentStock} → {item.newStock}</div>
+            <div style={{fontSize:14, color:C.accent, fontWeight:500}}>${item.usePrice}</div>
+            <div style={{fontSize:12, color:C.blue}}>库存: {item.newStock}</div>
           </div>
         </div>)}
       </div>
       <div style={{marginTop:16, display:"flex", gap:10}}>
         {updating ? <Card style={{flex:1, background:C.accentDim, borderColor:"#A7F3D0"}}>
           <div style={{textAlign:"center", padding:"8px 0"}}>
-            <div style={{fontSize:14, color:C.accent, marginBottom:8}}>更新中... {updateProgress.done}/{updateProgress.total}</div>
+            <div style={{fontSize:14, color:C.accent, marginBottom:8}}>处理中... {updateProgress.done}/{updateProgress.total}</div>
             <div style={{background:"#A7F3D0", borderRadius:4, height:6}}>
               <div style={{background:C.accent, height:6, borderRadius:4, width:`${updateProgress.total?updateProgress.done/updateProgress.total*100:0}%`, transition:"width .3s"}}/>
             </div>
           </div>
         </Card> : <>
-          <Btn onClick={applyUpdates} style={{flex:1, padding:"12px"}}>🚀 确认更新 Shopify</Btn>
+          <Btn onClick={applyUpdates} style={{flex:1, padding:"12px"}}>🚀 确认提交 Shopify</Btn>
           <Btn variant="ghost" onClick={()=>setStep(2)}>← 返回</Btn>
         </>}
       </div>
     </Card>}
 
-    {/* STEP 4: Done */}
     {step===4 && <Card>
       <div style={{textAlign:"center", padding:"20px 0 10px"}}>
         <div style={{fontSize:48, marginBottom:12}}>✅</div>
-        <div style={{fontSize:18, color:C.text, fontWeight:500, marginBottom:4}}>更新完成！</div>
-        <div style={{fontSize:14, color:C.muted}}>{updateResults.filter(r=>r.status==="success").length} 个产品成功更新</div>
+        <div style={{fontSize:18, color:C.text, fontWeight:500, marginBottom:4}}>处理完成！</div>
+        <div style={{display:"flex", gap:16, justifyContent:"center", marginTop:8}}>
+          <span style={{fontSize:14, color:C.accent}}>✓ 更新 {updateResults.filter(r=>r.status==="updated").length} 个</span>
+          <span style={{fontSize:14, color:C.blue}}>✦ 新建 {updateResults.filter(r=>r.status==="created").length} 个</span>
+          {updateResults.filter(r=>r.status==="error").length>0 && <span style={{fontSize:14, color:C.danger}}>✗ 失败 {updateResults.filter(r=>r.status==="error").length} 个</span>}
+        </div>
       </div>
       <div style={{marginTop:16, display:"flex", flexDirection:"column", gap:6}}>
-        {updateResults.map((r,i) => <div key={i} style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 12px", background:r.status==="success"?C.accentDim:C.dangerDim, borderRadius:6}}>
+        {updateResults.map((r,i) => <div key={i} style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 12px", background:r.status==="error"?C.dangerDim:r.isNew?C.blueDim:C.accentDim, borderRadius:6}}>
           <div>
-            <div style={{fontSize:14, color:C.text}}>{r.title}</div>
+            <div style={{display:"flex", alignItems:"center", gap:6}}>
+              <span style={{fontSize:11, padding:"1px 7px", borderRadius:10, background:r.isNew?"#DBEAFE":C.accentDim, color:r.isNew?C.blue:C.accent}}>
+                {r.status==="created"?"✦ 新建":r.status==="updated"?"✓ 更新":"✗ 失败"}
+              </span>
+              <span style={{fontSize:14, color:C.text}}>{r.title}</span>
+            </div>
             <div style={{fontSize:12, color:C.muted}}>SKU: {r.sku}</div>
           </div>
-          {r.status==="success" ? <div style={{textAlign:"right"}}>
+          {r.status!=="error" ? <div style={{textAlign:"right"}}>
             <div style={{fontSize:14, color:C.accent}}>${r.price}</div>
             <div style={{fontSize:12, color:C.blue}}>库存: {r.stock}</div>
-          </div> : <div style={{fontSize:13, color:C.danger}}>{r.error}</div>}
+          </div> : <div style={{fontSize:13, color:C.danger, maxWidth:160}}>{r.error}</div>}
         </div>)}
       </div>
-      <Btn onClick={()=>{setFile(null);setFilePreview(null);setParsed(null);setMatched([]);setStep(1);}} style={{width:"100%", marginTop:16, padding:"12px"}}>
+      <Btn onClick={()=>{setFile(null);setFilePreview(null);setParsed(null);setMatched([]);setUpdateResults([]);setStep(1);}} style={{width:"100%", marginTop:16, padding:"12px"}}>
         上传下一张Invoice
       </Btn>
     </Card>}
