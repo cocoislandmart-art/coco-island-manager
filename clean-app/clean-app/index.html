@@ -10,7 +10,7 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#FFFFFF;color:#1A1A2E;font-family:sans-serif;font-size:16px}
-textarea,input{color-scheme:light}
+textarea,input,select{color-scheme:light}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#F1F5F9}::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:3px}
@@ -19,82 +19,100 @@ textarea,input{color-scheme:light}
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const {useState, useEffect} = React;
+const {useState, useEffect, useRef} = React;
 
 const WORKER = "https://coco-zoho-proxy.cocoislandmart.workers.dev";
 const AIDS = {pan:"5644395000000008002", sales:"5142150000000008002"};
-
-function getApiKey() { return localStorage.getItem("coco_api_key") || ""; }
+const ORIGIN_ZIP = "11228";
 
 const C = {
   bg:"#F8F9FA", surface:"#FFFFFF", border:"#E2E8F0", borderHover:"#CBD5E1",
   text:"#1A1A2E", muted:"#64748B", accent:"#059669", accentDim:"#ECFDF5",
   warn:"#D97706", warnDim:"#FFFBEB", danger:"#DC2626", dangerDim:"#FEF2F2",
-  blue:"#2563EB", blueDim:"#EFF6FF",
+  blue:"#2563EB", blueDim:"#EFF6FF", purple:"#7C3AED", purpleDim:"#F5F3FF",
 };
 
-const EMAIL_SYSTEM = `You are a professional customer service representative for Coco Island Mart, an online store. Reply to customer emails in English only. Be warm, professional, and concise (under 150 words). Identify the issue type and respond accordingly:
-1. Order/Logistics - acknowledge and advise checking "My Orders" page
-2. Returns/Refunds - confirm receipt, request order number and photos, 3 business days processing
-3. Product Inquiry - answer helpfully, follow up if unsure
-4. Complaint - apologize sincerely, promise to follow up
-Sign off as: "Best regards,\nCoco Island Mart Customer Service Team"`;
+const EMAIL_SYSTEM = `You are a professional customer service representative for Coco Island Mart, an online store. Reply to customer emails in English only. Be warm, professional, and concise (under 150 words). Sign off as: "Best regards,\nCoco Island Mart Customer Service Team"`;
 
-const PRODUCT_SYSTEM = `You are a professional e-commerce copywriter and SEO expert specializing in high-converting product listings. Generate compelling product copy based on product information.
-
-Format your response EXACTLY as follows:
-
+const PRODUCT_SYSTEM = `You are a professional e-commerce copywriter and SEO expert. Generate compelling product copy.
+Format EXACTLY as:
 [Product Title]
-Write a compelling title under 15 words with primary keyword first
-
+Compelling title under 15 words
 [Key Features]
-- Feature 1: specific benefit
-- Feature 2: specific benefit  
-- Feature 3: specific benefit
-
+- Feature 1: benefit
+- Feature 2: benefit
+- Feature 3: benefit
 [Product Description]
-Write 100-150 words in English focusing on benefits and lifestyle appeal
+100-150 words English focusing on benefits
 ---
-用100-150字写中文版本，强调产品价值和生活方式
-
+100-150字中文版本
 [High-Traffic SEO Keywords]
-Primary: (highest search volume keyword)
-Secondary: keyword2, keyword3, keyword4, keyword5
-Long-tail: "exact phrase buyers search for", "another buyer phrase"
+Primary: (keyword)
+Secondary: kw1, kw2, kw3
+Long-tail: "phrase 1", "phrase 2"
 Tags: tag1, tag2, tag3, tag4, tag5, tag6, tag7, tag8, tag9, tag10
-
 [Suggested Price Range]
-Based on market research, suggest competitive price range
+Competitive price range`;
 
-Tone: professional, conversion-focused, highlight unique value proposition`;
+const MARKETING_SYSTEM = `You are an e-commerce marketing copywriter for Coco Island Mart. Generate local delivery promotional copy. Bilingual Chinese/English. Chinese first, then English, separated by ---.`;
 
-const MARKETING_SYSTEM = `You are an e-commerce marketing copywriter for Coco Island Mart. Generate local delivery promotional copy. Requirements: highlight same-day/next-day delivery advantage, friendly tone, bilingual Chinese/English. Format: Chinese version first, then English version, separated by ---.`;
+const INVOICE_SYSTEM = `You are an expert at reading and extracting data from invoices. Extract all line items from this invoice.
+Return ONLY a valid JSON object (no markdown, no explanation) in this exact format:
+{
+  "supplier": "supplier name or empty string",
+  "invoice_number": "invoice number or empty string",
+  "invoice_date": "date string or empty string",
+  "shipping_cost": 0.00,
+  "shipping_carrier": "UPS or USPS or FedEx or empty string",
+  "items": [
+    {
+      "sku": "SKU code or empty string",
+      "description": "product name",
+      "quantity": 1,
+      "unit_cost": 0.00,
+      "weight_kg": 0.0
+    }
+  ]
+}
+Rules:
+- shipping_cost: extract the shipping/freight line if present, otherwise 0
+- weight_kg: estimate from product description if not stated (typical small item = 0.3kg)
+- sku: extract exact SKU/item code from invoice
+- unit_cost: cost per single unit in USD`;
 
 async function callClaude({system, userContent}) {
-  try {
-    const res = await fetch(WORKER + "/claude", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 1000,
-        system,
-        messages: [{role:"user", content: userContent}]
-      })
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    return data.content?.[0]?.text || "";
-  } catch(e) {
-    throw new Error(e.message);
-  }
+  const res = await fetch(WORKER + "/claude", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      model: "claude-sonnet-4-5",
+      max_tokens: 1000,
+      system,
+      messages: [{role:"user", content: userContent}]
+    })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.content?.[0]?.text || "";
 }
 
-function Btn({children, onClick, variant="primary", disabled, style={}}) {
-  const base = {border:"none", borderRadius:6, cursor:disabled?"not-allowed":"pointer", fontSize:14, letterSpacing:.5, padding:"9px 18px", transition:"all .15s", fontWeight:500};
+// Shipping rate estimator (UPS/USPS/FedEx approximation from 11228)
+function estimateShipping(carrier, weightKg, destZip) {
+  const lbs = weightKg * 2.205;
+  const rates = {
+    UPS:   lbs <= 1 ? 8.50  : lbs <= 5 ? 12.00 : lbs <= 10 ? 18.00 : lbs * 1.80,
+    USPS:  lbs <= 1 ? 6.00  : lbs <= 5 ? 9.50  : lbs <= 10 ? 14.00 : lbs * 1.40,
+    FedEx: lbs <= 1 ? 9.00  : lbs <= 5 ? 13.50 : lbs <= 10 ? 19.50 : lbs * 1.90,
+  };
+  return rates[carrier] || rates.USPS;
+}
+
+function Btn({children, onClick, variant="primary", disabled, style={}, color}) {
+  const base = {border:"none", borderRadius:6, cursor:disabled?"not-allowed":"pointer", fontSize:14, letterSpacing:.3, padding:"9px 18px", transition:"all .15s", fontWeight:500};
   const v = {
-    primary: {background:disabled?C.border:C.accent, color:disabled?C.muted:"#FFFFFF"},
-    ghost: {background:"transparent", color:C.muted, border:`1px solid ${C.border}`}
+    primary: {background:disabled?C.border:color||C.accent, color:disabled?C.muted:"#FFFFFF"},
+    ghost: {background:"transparent", color:color||C.muted, border:`1px solid ${C.border}`},
+    danger: {background:disabled?C.border:C.danger, color:"#FFFFFF"},
   };
   return <button onClick={onClick} disabled={disabled} style={{...base, ...v[variant], ...style}}>{children}</button>;
 }
@@ -127,7 +145,8 @@ const tabs = [
   {id:"email", zh:"自动回邮", en:"Auto Email", icon:"✉"},
   {id:"delivery", zh:"本地配送", en:"Local Delivery", icon:"⊛"},
   {id:"marketing", zh:"推广工具", en:"Marketing", icon:"◉"},
-  {id:"products", zh:"新产品", en:"Products", icon:"⊕"},
+  {id:"products", zh:"产品管理", en:"Products", icon:"⊕"},
+  {id:"invoice", zh:"Invoice进货", en:"Invoice", icon:"📄"},
   {id:"settings", zh:"设置", en:"Settings", icon:"⚙"},
 ];
 
@@ -151,8 +170,8 @@ function Overview({setTab}) {
       {[
         {zh:"回复客户邮件", en:"Reply Emails", tab:"email", icon:"✉", color:C.blue},
         {zh:"管理配送区域", en:"Delivery Zones", tab:"delivery", icon:"⊛", color:C.accent},
-        {zh:"生成推广文案", en:"Generate Copy", tab:"marketing", icon:"◉", color:C.warn},
-        {zh:"加新产品", en:"Add Product", tab:"products", icon:"⊕", color:"#7C3AED"},
+        {zh:"Invoice进货", en:"Invoice Upload", tab:"invoice", icon:"📄", color:C.purple},
+        {zh:"产品管理", en:"Products", tab:"products", icon:"⊕", color:C.warn},
       ].map((a,i) => <button key={i} onClick={()=>setTab(a.tab)}
         style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"14px", cursor:"pointer", textAlign:"left", transition:"border-color .15s", boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}
         onMouseEnter={e=>e.currentTarget.style.borderColor=C.borderHover}
@@ -168,10 +187,10 @@ function Overview({setTab}) {
         {[
           {name:"Claude AI 回邮", ok:true, status:"运行中"},
           {name:"Zoho Mail 收件箱", ok:true, status:"已连接"},
-          {name:"Shopify 本地配送", ok:true, status:"已启用"},
+          {name:"Shopify API", ok:true, status:"已连接"},
         ].map((s,i) => <div key={i} style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
           <span style={{fontSize:14, color:C.text}}>{s.name}</span>
-          <span style={{fontSize:13, padding:"3px 12px", borderRadius:20, background:s.ok?C.accentDim:C.warnDim, color:s.ok?C.accent:C.warn, border:`1px solid ${s.ok?"#A7F3D0":"#FDE68A"}`}}>{s.status}</span>
+          <span style={{fontSize:13, padding:"3px 12px", borderRadius:20, background:C.accentDim, color:C.accent, border:`1px solid #A7F3D0`}}>{s.status}</span>
         </div>)}
       </div>
     </Card>
@@ -213,14 +232,8 @@ function EmailTab() {
       const d = await r.json();
       const raw = (d.data && (d.data.content || d.data.body)) || email.summary || "";
       const tmp = document.createElement("div"); tmp.innerHTML = raw;
-      const plain = tmp.textContent || tmp.innerText || "";
-      setInput(plain.substring(0, 600));
+      setInput((tmp.textContent || tmp.innerText || "").substring(0, 600));
     } catch { setInput(email.summary || ""); }
-  }
-
-  async function switchAccount(acc) {
-    setAccount(acc); setReply(""); setErr("");
-    await loadInbox(acc);
   }
 
   useEffect(() => { loadInbox("sales"); }, []);
@@ -228,7 +241,7 @@ function EmailTab() {
   async function gen() {
     setLoading(true); setReply(""); setErr("");
     try {
-      const t = await callClaude({system: EMAIL_SYSTEM, userContent: `Please reply to this customer email:\n\n${input}`});
+      const t = await callClaude({system: EMAIL_SYSTEM, userContent: `Reply to this customer email:\n\n${input}`});
       setReply(t.trim());
     } catch(e) { setErr("Generation failed: " + e.message); }
     setLoading(false);
@@ -241,7 +254,7 @@ function EmailTab() {
         <button onClick={()=>loadInbox(account)} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:16}}>↻</button>
       </div>
       <div style={{padding:"8px", borderBottom:`1px solid ${C.border}`, display:"flex", gap:4}}>
-        {["sales","pan"].map(acc => <button key={acc} onClick={()=>switchAccount(acc)}
+        {["sales","pan"].map(acc => <button key={acc} onClick={()=>{setAccount(acc); loadInbox(acc);}}
           style={{flex:1, padding:"5px", borderRadius:4, cursor:"pointer", fontSize:12, border:"none", background:account===acc?C.accentDim:C.bg, color:account===acc?C.accent:C.muted}}>
           {acc}@
         </button>)}
@@ -259,7 +272,6 @@ function EmailTab() {
         </div>)}
       </div>
     </div>
-
     <div>
       <div style={{marginBottom:12}}>
         <Label zh="自动回邮" en="AI Auto-Reply"/>
@@ -276,8 +288,7 @@ function EmailTab() {
       {err && <p style={{color:C.danger, fontSize:14, marginBottom:10}}>{err}</p>}
       {reply && <Card style={{animation:"fadeIn .3s ease"}}>
         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
-          <Label zh="AI 回复" en="Reply"/>
-          <CopyBtn text={reply}/>
+          <Label zh="AI 回复" en="Reply"/><CopyBtn text={reply}/>
         </div>
         <p style={{fontSize:15, lineHeight:1.8, color:C.text, margin:0, whiteSpace:"pre-wrap"}}>{reply}</p>
       </Card>}
@@ -293,24 +304,16 @@ function DeliveryTab() {
     {code:"68000", city:"Ampang", active:false, orders:0},
     {code:"41000", city:"Klang", active:false, orders:0},
   ]);
-  const [nc,setNc] = useState("");
-  const [nci,setNci] = useState("");
+  const [nc,setNc] = useState(""); const [nci,setNci] = useState("");
   const inp = {flex:1, background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, padding:"9px 12px", color:C.text, fontSize:14, outline:"none"};
-
   return <div>
     <div style={{marginBottom:16}}>
       <Label zh="本地配送管理" en="Local Delivery Zones"/>
-      <p style={{fontSize:14, color:C.muted, margin:"6px 0 0"}}>按邮政编码+城市双重验证 / Postcode + City</p>
+      <p style={{fontSize:14, color:C.muted, margin:"6px 0 0"}}>按邮政编码+城市双重验证</p>
     </div>
     <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16}}>
-      <Card>
-        <div style={{fontSize:32, color:C.accent, fontFamily:"Georgia,serif"}}>{zones.filter(z=>z.active).length}</div>
-        <div style={{fontSize:13, color:C.muted, marginTop:4}}>启用区域 / Active Zones</div>
-      </Card>
-      <Card>
-        <div style={{fontSize:32, color:C.blue, fontFamily:"Georgia,serif"}}>{zones.filter(z=>z.active).reduce((a,z)=>a+z.orders,0)}</div>
-        <div style={{fontSize:13, color:C.muted, marginTop:4}}>今日配送 / Today</div>
-      </Card>
+      <Card><div style={{fontSize:32, color:C.accent, fontFamily:"Georgia,serif"}}>{zones.filter(z=>z.active).length}</div><div style={{fontSize:13, color:C.muted, marginTop:4}}>启用区域</div></Card>
+      <Card><div style={{fontSize:32, color:C.blue, fontFamily:"Georgia,serif"}}>{zones.filter(z=>z.active).reduce((a,z)=>a+z.orders,0)}</div><div style={{fontSize:13, color:C.muted, marginTop:4}}>今日配送</div></Card>
     </div>
     <Card style={{marginBottom:12}}>
       <Label zh="配送区域" en="Zone List"/>
@@ -323,12 +326,8 @@ function DeliveryTab() {
           </div>
           <div style={{display:"flex", alignItems:"center", gap:8}}>
             {z.orders>0 && <span style={{fontSize:13, color:C.blue}}>{z.orders} orders</span>}
-            <button onClick={()=>setZones(zones.map((zn,ix)=>ix===i?{...zn,active:!zn.active}:zn))}
-              style={{padding:"4px 12px", borderRadius:20, fontSize:13, cursor:"pointer", border:"none", background:z.active?C.accentDim:C.border, color:z.active?C.accent:C.muted}}>
-              {z.active?"启用":"停用"}
-            </button>
-            <button onClick={()=>setZones(zones.filter((_,ix)=>ix!==i))}
-              style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18}}>×</button>
+            <button onClick={()=>setZones(zones.map((zn,ix)=>ix===i?{...zn,active:!zn.active}:zn))} style={{padding:"4px 12px", borderRadius:20, fontSize:13, cursor:"pointer", border:"none", background:z.active?C.accentDim:C.border, color:z.active?C.accent:C.muted}}>{z.active?"启用":"停用"}</button>
+            <button onClick={()=>setZones(zones.filter((_,ix)=>ix!==i))} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18}}>×</button>
           </div>
         </div>)}
       </div>
@@ -345,33 +344,24 @@ function DeliveryTab() {
 }
 
 function MarketingTab() {
-  const [sel,setSel] = useState(null);
-  const [custom,setCustom] = useState("");
-  const [result,setResult] = useState("");
-  const [loading,setLoading] = useState(false);
-
+  const [sel,setSel] = useState(null); const [custom,setCustom] = useState(""); const [result,setResult] = useState(""); const [loading,setLoading] = useState(false);
   const templates = [
-    {zh:"首页Banner", en:"Homepage Banner", prompt:"Generate homepage banner copy promoting local same-day delivery service for Coco Island Mart"},
-    {zh:"邮件通知", en:"Email to Locals", prompt:"Generate email notification to local customers about same-day/next-day delivery service"},
-    {zh:"社交媒体", en:"Social Media", prompt:"Generate Instagram/Facebook post promoting local same-day delivery, make it attractive"},
+    {zh:"首页Banner", en:"Homepage Banner", prompt:"Generate homepage banner copy promoting local same-day delivery for Coco Island Mart"},
+    {zh:"邮件通知", en:"Email to Locals", prompt:"Generate email notification to local customers about same-day/next-day delivery"},
+    {zh:"社交媒体", en:"Social Media", prompt:"Generate Instagram/Facebook post promoting local same-day delivery"},
     {zh:"促销短信", en:"Promo SMS", prompt:"Generate promotional SMS for local customers about same-day delivery, under 70 words"},
   ];
-
   async function gen(prompt) {
     setLoading(true); setResult("");
     try {setResult(await callClaude({system:MARKETING_SYSTEM, userContent:prompt}));}
-    catch(e) {setResult("Generation failed: "+e.message);}
+    catch(e) {setResult("Failed: "+e.message);}
     setLoading(false);
   }
-
   return <div>
-    <div style={{marginBottom:16}}>
-      <Label zh="推广工具" en="Marketing Tools"/>
-      <p style={{fontSize:14, color:C.muted, margin:"6px 0 0"}}>AI 生成本地配送推广文案</p>
-    </div>
+    <div style={{marginBottom:16}}><Label zh="推广工具" en="Marketing Tools"/></div>
     <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16}}>
       {templates.map((t,i) => <button key={i} onClick={()=>{setSel(i); gen(t.prompt);}}
-        style={{background:sel===i?C.accentDim:C.surface, border:`1px solid ${sel===i?C.accent:C.border}`, borderRadius:8, padding:"14px 12px", cursor:"pointer", textAlign:"left", transition:"all .15s", boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
+        style={{background:sel===i?C.accentDim:C.surface, border:`1px solid ${sel===i?C.accent:C.border}`, borderRadius:8, padding:"14px 12px", cursor:"pointer", textAlign:"left", boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
         <div style={{fontSize:14, color:sel===i?C.accent:C.text, fontWeight:500}}>{t.zh}</div>
         <div style={{fontSize:12, color:C.muted, marginTop:2}}>{t.en}</div>
       </button>)}
@@ -381,63 +371,98 @@ function MarketingTab() {
       <div style={{marginTop:10}}><TA value={custom} onChange={setCustom} placeholder="描述你想要的推广内容..." rows={3}/></div>
       <Btn onClick={()=>{setSel(null); gen(custom);}} disabled={loading||!custom.trim()} style={{marginTop:10}}>生成 / Generate</Btn>
     </Card>
-    {loading && <Card><div style={{display:"flex", alignItems:"center", gap:10}}>
-      <div style={{width:8, height:8, borderRadius:"50%", background:C.accent, animation:"pulse 1s infinite"}}/>
-      <span style={{fontSize:14, color:C.muted}}>AI 生成中...</span>
-    </div></Card>}
+    {loading && <Card><div style={{display:"flex", alignItems:"center", gap:10}}><div style={{width:8, height:8, borderRadius:"50%", background:C.accent, animation:"pulse 1s infinite"}}/><span style={{fontSize:14, color:C.muted}}>AI 生成中...</span></div></Card>}
     {result && !loading && <Card>
-      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
-        <Label zh="生成结果" en="Generated Copy"/>
-        <CopyBtn text={result}/>
-      </div>
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}><Label zh="生成结果" en="Generated Copy"/><CopyBtn text={result}/></div>
       <p style={{fontSize:15, lineHeight:1.9, color:C.text, margin:0, whiteSpace:"pre-wrap"}}>{result}</p>
     </Card>}
   </div>;
 }
 
+// ── PRODUCTS TAB WITH DRAFT CLEANUP ──────────────────────────────
 function ProductsTab() {
-  const [products,setProducts] = useState([]);
-  const [loadingProducts,setLoadingProducts] = useState(false);
-  const [filterStatus,setFilterStatus] = useState("all");
-  const [search,setSearch] = useState("");
-  const [view,setView] = useState("list");
-  const [mode,setMode] = useState("manual");
-  const [form,setForm] = useState({name:"", category:"", price:"", comparePrice:"", stock:"", sku:"", barcode:"", weight:"", vendor:"Coco Island Mart", tags:"", keywords:""});
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [search, setSearch] = useState("");
+  const [view, setView] = useState("list"); // list | add | generated | stale
+  const [staleProducts, setStaleProducts] = useState([]);
+  const [staleSelected, setStaleSelected] = useState(new Set());
+  const [deleting, setDeleting] = useState(false);
+  const [deleteProgress, setDeleteProgress] = useState({done:0, total:0});
+  const [mode, setMode] = useState("manual");
+  const [form, setForm] = useState({name:"", category:"", price:"", comparePrice:"", stock:"", sku:"", barcode:"", weight:"", vendor:"Coco Island Mart", tags:"", keywords:""});
+  const [gen, setGen] = useState(null);
+  const [genLoading, setGenLoading] = useState(false);
+  const [imgFile, setImgFile] = useState(null);
+  const [imgPrev, setImgPrev] = useState(null);
+  const [imgDesc, setImgDesc] = useState("");
+  const [bulk, setBulk] = useState("");
+
+  const inp = {width:"100%", background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, padding:"10px 12px", color:C.text, fontSize:14, outline:"none", boxSizing:"border-box"};
 
   useEffect(() => { loadProducts(); }, []);
 
   async function loadProducts() {
-    setLoadingProducts(true);
+    setLoading(true);
     try {
-      const res = await fetch(WORKER + "/shopify/products?limit=50");
+      const res = await fetch(WORKER + "/shopify/products?limit=250");
       const data = await res.json();
       setProducts(data.products || []);
-    } catch(e) { console.error("Failed to load products:", e); }
-    setLoadingProducts(false);
+    } catch(e) { console.error(e); }
+    setLoading(false);
+  }
+
+  function findStaleProducts() {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 60);
+    const stale = products.filter(p => {
+      if (p.status !== "draft") return false;
+      const created = new Date(p.created_at);
+      return created < cutoff;
+    });
+    setStaleProducts(stale);
+    setStaleSelected(new Set(stale.map(p => p.id)));
+    setView("stale");
+  }
+
+  function toggleStale(id) {
+    setStaleSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  async function deleteSelected() {
+    const toDelete = staleProducts.filter(p => staleSelected.has(p.id));
+    if (!toDelete.length) return;
+    setDeleting(true);
+    setDeleteProgress({done:0, total:toDelete.length});
+    let done = 0;
+    for (const p of toDelete) {
+      try {
+        await fetch(`${WORKER}/shopify/products/${p.id}`, {method:"DELETE"});
+      } catch(e) { console.error("Delete failed:", p.id, e); }
+      done++;
+      setDeleteProgress({done, total:toDelete.length});
+      await new Promise(r => setTimeout(r, 300)); // rate limit
+    }
+    setDeleting(false);
+    await loadProducts();
+    setView("list");
   }
 
   function generateSKU(name, category) {
     const prefix = (category||"GEN").substring(0,3).toUpperCase();
     const mid = (name||"PROD").replace(/\s+/g,"").substring(0,4).toUpperCase();
-    const num = Math.floor(Math.random()*9000)+1000;
-    return `${prefix}-${mid}-${num}`;
+    return `${prefix}-${mid}-${Math.floor(Math.random()*9000)+1000}`;
   }
-
   function generateUPC() {
-    const digits = Array.from({length:11}, ()=>Math.floor(Math.random()*10));
-    const sum = digits.reduce((a,d,i)=>a+d*(i%2===0?3:1),0);
-    const check = (10-sum%10)%10;
-    return [...digits, check].join('');
+    const d = Array.from({length:11}, ()=>Math.floor(Math.random()*10));
+    const s = d.reduce((a,x,i)=>a+x*(i%2===0?3:1),0);
+    return [...d,(10-s%10)%10].join('');
   }
-
-  const [imgDesc,setImgDesc] = useState("");
-  const [bulk,setBulk] = useState("");
-  const [gen,setGen] = useState(null);
-  const [loading,setLoading] = useState(false);
-  const [imgFile,setImgFile] = useState(null);
-  const [imgPrev,setImgPrev] = useState(null);
-
-  const inp = {width:"100%", background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, padding:"10px 12px", color:C.text, fontSize:14, outline:"none", boxSizing:"border-box"};
 
   function handleImg(e) {
     const f = e.target.files[0]; if(!f) return;
@@ -446,37 +471,32 @@ function ProductsTab() {
   }
 
   async function generateDesc() {
-    setLoading(true); setGen(null);
+    setGenLoading(true); setGen(null);
     try {
       let uc;
-      if(mode==="image" && imgFile) {
+      if (mode==="image" && imgFile) {
         const b64 = await new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.readAsDataURL(imgFile)});
-        uc = [{type:"image", source:{type:"base64", media_type:imgFile.type, data:b64}}, {type:"text", text:`Please generate complete product copy based on this product image. ${imgDesc?"Additional notes: "+imgDesc:""}`}];
-      } else if(mode==="bulk") {
-        uc = `Here are multiple products. Generate copy for each, separated by =====:\n\n${bulk}`;
+        uc = [{type:"image", source:{type:"base64", media_type:imgFile.type, data:b64}}, {type:"text", text:`Generate product copy from this image. ${imgDesc?"Notes: "+imgDesc:""}`}];
+      } else if (mode==="bulk") {
+        uc = `Generate copy for each product, separated by =====:\n\n${bulk}`;
       } else {
-        uc = `Product Name: ${form.name}\nCategory: ${form.category}\nPrice: ${form.price}\nKeywords: ${form.keywords}\nPlease generate complete product copy.`;
+        uc = `Product: ${form.name}\nCategory: ${form.category}\nPrice: ${form.price}\nKeywords: ${form.keywords}`;
       }
       const result = await callClaude({system:PRODUCT_SYSTEM, userContent:uc});
       setGen(result);
-      const keywordMatch = result.match(/\[High-Traffic SEO Keywords\]([\s\S]*?)\[/);
-      if (keywordMatch) {
-        const kwSection = keywordMatch[1];
-        const tagsMatch = kwSection.match(/Tags:\s*(.+)/);
-        if (tagsMatch) setForm(f=>({...f, tags: tagsMatch[1].trim()}));
-        const primaryMatch = kwSection.match(/Primary:\s*(.+)/);
-        if (primaryMatch) setForm(f=>({...f, keywords: primaryMatch[1].trim()}));
+      const km = result.match(/\[High-Traffic SEO Keywords\]([\s\S]*?)\[/);
+      if (km) {
+        const tm = km[1].match(/Tags:\s*(.+)/); if(tm) setForm(f=>({...f, tags:tm[1].trim()}));
+        const pm = km[1].match(/Primary:\s*(.+)/); if(pm) setForm(f=>({...f, keywords:pm[1].trim()}));
       }
       setView("generated");
-    } catch(e) {setGen("Generation failed: "+e.message); setView("generated");}
-    setLoading(false);
+    } catch(e) { setGen("Failed: "+e.message); setView("generated"); }
+    setGenLoading(false);
   }
 
   async function uploadToShopify() {
-    setLoading(true);
+    setGenLoading(true);
     try {
-      const sku = form.sku || generateSKU(form.name, form.category);
-      const barcode = form.barcode || generateUPC();
       const product = {
         title: form.name || "New Product",
         body_html: gen || "",
@@ -487,48 +507,122 @@ function ProductsTab() {
         variants: [{
           price: form.price?.replace(/[^0-9.]/g,"") || "0",
           compare_at_price: form.comparePrice?.replace(/[^0-9.]/g,"") || undefined,
-          sku: sku,
-          barcode: barcode,
+          sku: form.sku || generateSKU(form.name, form.category),
+          barcode: form.barcode || generateUPC(),
           weight: parseFloat(form.weight)||0,
           weight_unit: "kg",
           inventory_quantity: parseInt(form.stock)||0,
           inventory_management: "shopify"
         }]
       };
-      const res = await fetch(WORKER + "/shopify/products", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify(product)
-      });
+      const res = await fetch(WORKER + "/shopify/products", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(product)});
       const data = await res.json();
-      if (data.product) {
-        alert("✅ Product uploaded to Shopify!\nID: " + data.product.id + "\nStatus: Draft");
-        setView("list");
-        loadProducts();
-      } else {
-        alert("❌ Upload failed: " + JSON.stringify(data.errors || data));
-      }
-    } catch(e) { alert("❌ Error: " + e.message); }
-    setLoading(false);
+      if (data.product) { alert("✅ Uploaded! ID: "+data.product.id); setView("list"); loadProducts(); }
+      else alert("❌ Failed: "+JSON.stringify(data.errors||data));
+    } catch(e) { alert("❌ Error: "+e.message); }
+    setGenLoading(false);
   }
 
-  const filteredProducts = products.filter(p => {
-    const matchStatus = filterStatus === "all" || p.status === filterStatus;
-    const matchSearch = !search || p.title?.toLowerCase().includes(search.toLowerCase()) || p.variants?.[0]?.sku?.toLowerCase().includes(search.toLowerCase());
-    return matchStatus && matchSearch;
+  const stalePct = products.length ? Math.round(staleProducts.length/products.length*100) : 0;
+  const staleCount = products.filter(p => {
+    if (p.status !== "draft") return false;
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-60);
+    return new Date(p.created_at) < cutoff;
+  }).length;
+
+  const filtered = products.filter(p => {
+    const ms = filterStatus==="all" || p.status===filterStatus;
+    const mq = !search || p.title?.toLowerCase().includes(search.toLowerCase()) || p.variants?.[0]?.sku?.toLowerCase().includes(search.toLowerCase());
+    return ms && mq;
   });
 
-  if(view==="list") return <div>
+  // ── STALE DRAFT VIEW ──
+  if (view === "stale") return <div>
+    <div style={{display:"flex", alignItems:"center", gap:12, marginBottom:20}}>
+      <button onClick={()=>setView("list")} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:20}}>←</button>
+      <div>
+        <Label zh="过期Draft产品" en="Stale Draft Products"/>
+        <p style={{fontSize:13, color:C.muted, marginTop:4}}>{staleProducts.length} 个产品超过60天未发布</p>
+      </div>
+    </div>
+
+    {staleProducts.length === 0 ? <Card>
+      <div style={{textAlign:"center", padding:"40px 20px"}}>
+        <div style={{fontSize:40, marginBottom:12}}>✨</div>
+        <div style={{fontSize:16, color:C.text, fontWeight:500}}>没有过期Draft产品</div>
+        <div style={{fontSize:14, color:C.muted, marginTop:6}}>所有Draft产品都在60天以内</div>
+      </div>
+    </Card> : <>
+      <Card style={{marginBottom:12, background:C.dangerDim, borderColor:"#FECACA"}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:15, color:C.danger, fontWeight:500}}>⚠ 即将删除 {staleSelected.size} / {staleProducts.length} 个产品</div>
+            <div style={{fontSize:13, color:C.muted, marginTop:4}}>取消勾选你想保留的产品，再点删除</div>
+          </div>
+          <div style={{display:"flex", gap:8}}>
+            <Btn variant="ghost" onClick={()=>setStaleSelected(new Set())} style={{fontSize:13}}>全不选</Btn>
+            <Btn variant="ghost" onClick={()=>setStaleSelected(new Set(staleProducts.map(p=>p.id)))} style={{fontSize:13}}>全选</Btn>
+          </div>
+        </div>
+      </Card>
+
+      <div style={{display:"flex", flexDirection:"column", gap:8, marginBottom:16}}>
+        {staleProducts.map(p => {
+          const v = p.variants?.[0]||{};
+          const img = p.images?.[0]?.src;
+          const daysOld = Math.floor((Date.now()-new Date(p.created_at))/86400000);
+          const sel = staleSelected.has(p.id);
+          return <div key={p.id} onClick={()=>toggleStale(p.id)} style={{background:sel?C.dangerDim:C.surface, border:`1px solid ${sel?"#FECACA":C.border}`, borderRadius:8, padding:"14px", display:"flex", alignItems:"center", gap:12, cursor:"pointer", transition:"all .15s"}}>
+            <input type="checkbox" checked={sel} onChange={()=>toggleStale(p.id)} onClick={e=>e.stopPropagation()} style={{width:18, height:18, cursor:"pointer", accentColor:C.danger}}/>
+            {img ? <img src={img} alt="" style={{width:44, height:44, borderRadius:6, objectFit:"cover", border:`1px solid ${C.border}`}}/> :
+              <div style={{width:44, height:44, borderRadius:6, background:C.bg, border:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18}}>📦</div>}
+            <div style={{flex:1}}>
+              <div style={{fontSize:15, color:C.text, fontWeight:500, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:360}}>{p.title}</div>
+              <div style={{display:"flex", gap:10, marginTop:4}}>
+                <span style={{fontSize:13, color:C.danger}}>草稿 {daysOld} 天</span>
+                {v.sku && <span style={{fontSize:12, color:C.muted}}>SKU: {v.sku}</span>}
+                <span style={{fontSize:13, color:C.accent}}>${v.price}</span>
+              </div>
+            </div>
+            <div style={{fontSize:12, color:C.muted, textAlign:"right"}}>
+              {new Date(p.created_at).toLocaleDateString("en-US", {month:"short", day:"numeric", year:"numeric"})}
+            </div>
+          </div>;
+        })}
+      </div>
+
+      {deleting ? <Card style={{background:C.dangerDim, borderColor:"#FECACA"}}>
+        <div style={{textAlign:"center", padding:"10px 0"}}>
+          <div style={{fontSize:14, color:C.danger, marginBottom:8}}>删除中... {deleteProgress.done} / {deleteProgress.total}</div>
+          <div style={{background:"#FECACA", borderRadius:4, height:6}}>
+            <div style={{background:C.danger, height:6, borderRadius:4, width:`${deleteProgress.total?deleteProgress.done/deleteProgress.total*100:0}%`, transition:"width .3s"}}/>
+          </div>
+        </div>
+      </Card> : <div style={{display:"flex", gap:10}}>
+        <Btn variant="danger" onClick={deleteSelected} disabled={staleSelected.size===0} style={{flex:1, padding:"12px"}}>
+          🗑 删除选中的 {staleSelected.size} 个产品
+        </Btn>
+        <Btn variant="ghost" onClick={()=>setView("list")}>取消</Btn>
+      </div>}
+    </>}
+  </div>;
+
+  // ── LIST VIEW ──
+  if (view === "list") return <div>
     <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16}}>
       <div>
         <Label zh="产品管理" en="Product Manager"/>
         <p style={{fontSize:14, color:C.muted, margin:"6px 0 0"}}>{products.length} products from Shopify · Live sync</p>
       </div>
-      <div style={{display:"flex", gap:8}}>
+      <div style={{display:"flex", gap:8, flexWrap:"wrap", justifyContent:"flex-end"}}>
         <Btn variant="ghost" onClick={loadProducts}>↻ Refresh</Btn>
+        {staleCount > 0 && <Btn variant="danger" onClick={findStaleProducts} style={{fontSize:13}}>
+          🗑 {staleCount} 个过期Draft
+        </Btn>}
         <Btn onClick={()=>setView("add")}>+ Add Product</Btn>
       </div>
     </div>
+
     <div style={{display:"flex", gap:8, marginBottom:12}}>
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search products..." style={{flex:1, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"9px 12px", color:C.text, fontSize:14, outline:"none"}}/>
       <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"9px 12px", color:C.text, fontSize:14, outline:"none"}}>
@@ -538,39 +632,42 @@ function ProductsTab() {
         <option value="archived">Archived</option>
       </select>
     </div>
-    {loadingProducts && <Card><div style={{textAlign:"center", padding:20, color:C.muted}}>Loading products...</div></Card>}
+
+    {loading && <Card><div style={{textAlign:"center", padding:20, color:C.muted}}>Loading products...</div></Card>}
     <div style={{display:"flex", flexDirection:"column", gap:8}}>
-      {filteredProducts.map(p => {
-        const variant = p.variants?.[0] || {};
+      {filtered.map(p => {
+        const v = p.variants?.[0]||{};
         const img = p.images?.[0]?.src;
-        const stock = variant.inventory_quantity ?? 0;
-        return <div key={p.id} style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center", boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+        const stock = v.inventory_quantity??0;
+        const daysOld = Math.floor((Date.now()-new Date(p.created_at))/86400000);
+        const isStale = p.status==="draft" && daysOld>=60;
+        return <div key={p.id} style={{background:C.surface, border:`1px solid ${isStale?"#FECACA":C.border}`, borderRadius:8, padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center", boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
           <div style={{display:"flex", alignItems:"center", gap:12}}>
             {img ? <img src={img} alt="" style={{width:44, height:44, borderRadius:6, objectFit:"cover", border:`1px solid ${C.border}`}}/> :
               <div style={{width:44, height:44, borderRadius:6, background:C.bg, border:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18}}>📦</div>}
             <div>
               <div style={{fontSize:15, color:C.text, fontWeight:500, maxWidth:300, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p.title}</div>
               <div style={{display:"flex", gap:8, marginTop:4, flexWrap:"wrap"}}>
-                <span style={{fontSize:13, color:C.accent, fontWeight:500}}>${variant.price}</span>
+                <span style={{fontSize:13, color:C.accent, fontWeight:500}}>${v.price}</span>
                 <span style={{fontSize:13, color:stock===0?C.danger:stock<5?C.warn:C.muted}}>Stock: {stock}</span>
-                {variant.sku && <span style={{fontSize:12, color:C.muted}}>SKU: {variant.sku}</span>}
-                {p.product_type && <span style={{fontSize:12, color:C.muted}}>{p.product_type}</span>}
+                {v.sku && <span style={{fontSize:12, color:C.muted}}>SKU: {v.sku}</span>}
+                {isStale && <span style={{fontSize:12, color:C.danger}}>⚠ 草稿 {daysOld}天</span>}
               </div>
             </div>
           </div>
           <div style={{display:"flex", gap:8, alignItems:"center"}}>
-            <span style={{fontSize:13, padding:"3px 10px", borderRadius:20, background:p.status==="active"?C.accentDim:C.bg, color:p.status==="active"?C.accent:C.muted, border:`1px solid ${p.status==="active"?C.accent:C.border}`}}>
+            <span style={{fontSize:13, padding:"3px 10px", borderRadius:20, background:p.status==="active"?C.accentDim:isStale?C.dangerDim:C.bg, color:p.status==="active"?C.accent:isStale?C.danger:C.muted, border:`1px solid ${p.status==="active"?C.accent:isStale?"#FECACA":C.border}`}}>
               {p.status==="active"?"Active":"Draft"}
             </span>
             <Btn variant="ghost" style={{fontSize:12, padding:"4px 10px"}} onClick={()=>window.open(`https://admin.shopify.com/store/cocoislandmart/products/${p.id}`,"_blank")}>Edit</Btn>
-            <button style={{background:"transparent", border:"none", color:C.danger, cursor:"pointer", fontSize:18, opacity:.6}}>×</button>
           </div>
         </div>;
       })}
     </div>
   </div>;
 
-  if(view==="add") return <div>
+  // ── ADD VIEW ──
+  if (view === "add") return <div>
     <div style={{display:"flex", alignItems:"center", gap:12, marginBottom:20}}>
       <button onClick={()=>setView("list")} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:20}}>←</button>
       <Label zh="加新产品" en="Add Product"/>
@@ -583,75 +680,400 @@ function ProductsTab() {
     {mode==="manual" && <Card style={{marginBottom:12}}>
       <Label zh="产品信息" en="Product Info"/>
       <div style={{display:"flex", flexDirection:"column", gap:10, marginTop:12}}>
-        {[
-          {key:"name",ph:"Product Name *"},
-          {key:"category",ph:"Category (e.g. Bags, Accessories)"},
-          {key:"price",ph:"Price (e.g. 99.90)"},
-          {key:"comparePrice",ph:"Compare at Price (original price, optional)"},
-          {key:"stock",ph:"Stock Quantity"},
-          {key:"sku",ph:"SKU (leave blank to auto-generate)"},
-          {key:"barcode",ph:"UPC/Barcode (leave blank to auto-generate)"},
-          {key:"weight",ph:"Weight (e.g. 0.5 kg)"},
-          {key:"vendor",ph:"Vendor/Brand"},
-          {key:"tags",ph:"Tags (comma separated)"},
-          {key:"keywords",ph:"SEO Keywords"}
-        ].map(f =>
+        {[{key:"name",ph:"Product Name *"},{key:"category",ph:"Category"},{key:"price",ph:"Price (e.g. 99.90)"},{key:"comparePrice",ph:"Compare at Price (optional)"},{key:"stock",ph:"Stock Quantity"},{key:"sku",ph:"SKU (auto-generate if blank)"},{key:"barcode",ph:"Barcode (auto-generate if blank)"},{key:"weight",ph:"Weight kg"},{key:"vendor",ph:"Vendor/Brand"},{key:"tags",ph:"Tags (comma separated)"},{key:"keywords",ph:"SEO Keywords"}].map(f =>
           <input key={f.key} value={form[f.key]} onChange={e=>setForm(x=>({...x,[f.key]:e.target.value}))} placeholder={f.ph} style={inp}/>
         )}
       </div>
     </Card>}
     {mode==="image" && <Card style={{marginBottom:12}}>
-      <Label zh="上传产品图片" en="Upload Product Image"/>
+      <Label zh="上传产品图片" en="Upload Image"/>
       <div style={{marginTop:12}}>
         <label style={{display:"block", border:`2px dashed ${C.border}`, borderRadius:8, padding:"24px", textAlign:"center", cursor:"pointer"}}>
-          {imgPrev ? <img src={imgPrev} alt="preview" style={{maxHeight:160, maxWidth:"100%", borderRadius:6}}/> :
-            <div><div style={{fontSize:32, marginBottom:8}}>📷</div><div style={{fontSize:14, color:C.muted}}>Click to upload product image</div></div>}
+          {imgPrev ? <img src={imgPrev} alt="" style={{maxHeight:160, maxWidth:"100%", borderRadius:6}}/> :
+            <div><div style={{fontSize:32, marginBottom:8}}>📷</div><div style={{fontSize:14, color:C.muted}}>Click to upload</div></div>}
           <input type="file" accept="image/*" onChange={handleImg} style={{display:"none"}}/>
         </label>
-        <div style={{marginTop:10}}><TA value={imgDesc} onChange={setImgDesc} placeholder="Additional notes (optional)..." rows={2}/></div>
+        <div style={{marginTop:10}}><TA value={imgDesc} onChange={setImgDesc} placeholder="Additional notes..." rows={2}/></div>
       </div>
     </Card>}
     {mode==="bulk" && <Card style={{marginBottom:12}}>
       <Label zh="批量输入" en="Bulk Input"/>
-      <p style={{fontSize:13, color:C.muted, margin:"8px 0 10px"}}>One product per line: Product Name, Category, Price</p>
+      <p style={{fontSize:13, color:C.muted, margin:"8px 0 10px"}}>One per line: Name, Category, Price</p>
       <TA value={bulk} onChange={setBulk} placeholder={"Canvas Bag, Bags, RM89\nLeather Wallet, Accessories, RM159"} rows={6}/>
     </Card>}
     <div style={{display:"flex", gap:10}}>
-      <Btn onClick={generateDesc} disabled={loading||(mode==="manual"&&!form.name)||(mode==="image"&&!imgFile)||(mode==="bulk"&&!bulk)} style={{flex:1, padding:"12px"}}>
-        {loading?"Generating...":"AI Generate Description"}
+      <Btn onClick={generateDesc} disabled={genLoading||(mode==="manual"&&!form.name)||(mode==="image"&&!imgFile)||(mode==="bulk"&&!bulk)} style={{flex:1, padding:"12px"}}>
+        {genLoading?"Generating...":"AI Generate Description"}
       </Btn>
-      {mode==="manual" && <Btn onClick={()=>{setView("list");}} variant="ghost">Cancel</Btn>}
+      <Btn variant="ghost" onClick={()=>setView("list")}>Cancel</Btn>
     </div>
   </div>;
 
-  if(view==="generated") return <div>
+  // ── GENERATED VIEW ──
+  if (view === "generated") return <div>
     <div style={{display:"flex", alignItems:"center", gap:12, marginBottom:20}}>
       <button onClick={()=>setView("add")} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:20}}>←</button>
-      <Label zh="AI 生成结果" en="Generated Description"/>
+      <Label zh="AI 生成结果" en="Generated"/>
     </div>
     <Card style={{marginBottom:12}}>
       <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14}}>
-        <div style={{display:"flex", alignItems:"center", gap:8}}>
-          <div style={{width:7, height:7, borderRadius:"50%", background:C.accent}}/>
-          <span style={{fontSize:13, color:C.accent, letterSpacing:1}}>AI GENERATED</span>
-        </div>
-        <CopyBtn text={gen}/>
+        <span style={{fontSize:13, color:C.accent}}>✦ AI GENERATED</span><CopyBtn text={gen}/>
       </div>
       <p style={{fontSize:15, lineHeight:1.9, color:C.text, margin:0, whiteSpace:"pre-wrap"}}>{gen}</p>
     </Card>
     <div style={{display:"flex", gap:10}}>
-      <Btn onClick={uploadToShopify} disabled={loading} style={{flex:1, padding:"12px"}}>🚀 Upload to Shopify</Btn>
-      <Btn onClick={()=>setView("add")} variant="ghost">← Back</Btn>
-      <Btn onClick={generateDesc} variant="ghost" disabled={loading}>Regenerate</Btn>
+      <Btn onClick={uploadToShopify} disabled={genLoading} style={{flex:1, padding:"12px"}}>🚀 Upload to Shopify</Btn>
+      <Btn variant="ghost" onClick={()=>setView("add")}>← Back</Btn>
+      <Btn variant="ghost" onClick={generateDesc} disabled={genLoading}>Regenerate</Btn>
     </div>
+  </div>;
+}
+
+// ── INVOICE TAB ────────────────────────────────────────────────────
+function InvoiceTab() {
+  const [file, setFile] = useState(null);
+  const [filePreview, setFilePreview] = useState(null);
+  const [isPdf, setIsPdf] = useState(false);
+  const [parsing, setParsing] = useState(false);
+  const [parsed, setParsed] = useState(null);
+  const [shopifyProducts, setShopifyProducts] = useState([]);
+  const [matching, setMatching] = useState(false);
+  const [matched, setMatched] = useState([]);
+  const [updating, setUpdating] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState({done:0, total:0});
+  const [updateResults, setUpdateResults] = useState([]);
+  const [carrier, setCarrier] = useState("USPS");
+  const [manualShipping, setManualShipping] = useState("");
+  const [shippingMode, setShippingMode] = useState("invoice"); // invoice | manual | estimate
+  const [step, setStep] = useState(1); // 1=upload 2=review 3=confirm 4=done
+  const fileRef = useRef();
+
+  const MARKUP = 1.4;
+
+  useEffect(() => { loadShopifyProducts(); }, []);
+
+  async function loadShopifyProducts() {
+    try {
+      const res = await fetch(WORKER + "/shopify/products?limit=250");
+      const data = await res.json();
+      setShopifyProducts(data.products || []);
+    } catch(e) { console.error(e); }
+  }
+
+  function handleFile(e) {
+    const f = e.target.files[0]; if (!f) return;
+    setFile(f);
+    setIsPdf(f.type === "application/pdf");
+    if (f.type.startsWith("image/")) {
+      const r = new FileReader(); r.onload = ev => setFilePreview(ev.target.result); r.readAsDataURL(f);
+    } else {
+      setFilePreview(null);
+    }
+    setParsed(null); setMatched([]); setStep(1);
+  }
+
+  async function parseInvoice() {
+    if (!file) return;
+    setParsing(true); setParsed(null);
+    try {
+      const b64 = await new Promise(res => {
+        const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.readAsDataURL(file);
+      });
+      const mediaType = file.type || (isPdf ? "application/pdf" : "image/jpeg");
+      const userContent = [
+        isPdf
+          ? {type:"document", source:{type:"base64", media_type:"application/pdf", data:b64}}
+          : {type:"image", source:{type:"base64", media_type:mediaType, data:b64}},
+        {type:"text", text:"Extract all invoice data and return as JSON only."}
+      ];
+      const result = await callClaude({system: INVOICE_SYSTEM, userContent});
+      const clean = result.replace(/```json|```/g,"").trim();
+      const data = JSON.parse(clean);
+      setParsed(data);
+      matchWithShopify(data);
+      setStep(2);
+    } catch(e) { alert("❌ Failed to parse invoice: " + e.message); }
+    setParsing(false);
+  }
+
+  function matchWithShopify(data) {
+    setMatching(true);
+    const items = (data.items || []).map(item => {
+      // Find matching Shopify product by SKU
+      let shopifyProduct = null;
+      let shopifyVariant = null;
+      for (const p of shopifyProducts) {
+        for (const v of (p.variants||[])) {
+          if (v.sku && item.sku && v.sku.toLowerCase().trim() === item.sku.toLowerCase().trim()) {
+            shopifyProduct = p; shopifyVariant = v; break;
+          }
+        }
+        if (shopifyProduct) break;
+      }
+
+      // Calculate shipping share
+      const totalWeight = (data.items||[]).reduce((a,x)=>a+(x.weight_kg||0.3)*x.quantity, 0);
+      const itemWeight = (item.weight_kg||0.3) * item.quantity;
+      const weightRatio = totalWeight > 0 ? itemWeight/totalWeight : 1/(data.items||[]).length;
+
+      let shippingCost = 0;
+      if (shippingMode === "invoice") {
+        shippingCost = (data.shipping_cost||0) * weightRatio;
+      } else if (shippingMode === "manual") {
+        shippingCost = (parseFloat(manualShipping)||0) * weightRatio;
+      } else {
+        const totalEstimated = estimateShipping(carrier, totalWeight, "");
+        shippingCost = totalEstimated * weightRatio;
+      }
+
+      const unitShipping = item.quantity > 0 ? shippingCost / item.quantity : 0;
+      const totalCostPerUnit = (item.unit_cost||0) + unitShipping;
+      const suggestedPrice = Math.ceil(totalCostPerUnit * MARKUP * 100) / 100;
+      const currentPrice = shopifyVariant ? parseFloat(shopifyVariant.price||0) : 0;
+      const currentStock = shopifyVariant ? (shopifyVariant.inventory_quantity||0) : 0;
+
+      return {
+        ...item,
+        shopifyProduct,
+        shopifyVariant,
+        matched: !!shopifyVariant,
+        unitShipping: unitShipping.toFixed(3),
+        totalCostPerUnit: totalCostPerUnit.toFixed(2),
+        suggestedPrice: suggestedPrice.toFixed(2),
+        currentPrice: currentPrice.toFixed(2),
+        currentStock,
+        newStock: currentStock + (item.quantity||0),
+        usePrice: suggestedPrice.toFixed(2),
+        include: !!shopifyVariant,
+      };
+    });
+    setMatched(items);
+    setMatching(false);
+  }
+
+  function updateItem(idx, key, val) {
+    setMatched(prev => prev.map((m,i) => i===idx ? {...m, [key]:val} : m));
+  }
+
+  async function applyUpdates() {
+    const toUpdate = matched.filter(m => m.include && m.matched);
+    if (!toUpdate.length) { alert("No matched products to update."); return; }
+    setUpdating(true);
+    setUpdateProgress({done:0, total:toUpdate.length});
+    setUpdateResults([]);
+    const results = [];
+    let done = 0;
+    for (const item of toUpdate) {
+      try {
+        // Update price
+        await fetch(`${WORKER}/shopify/variants/${item.shopifyVariant.id}`, {
+          method:"PUT",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({variant:{id:item.shopifyVariant.id, price:item.usePrice, inventory_quantity:item.newStock}})
+        });
+        results.push({sku:item.sku, title:item.shopifyProduct.title, status:"success", price:item.usePrice, stock:item.newStock});
+      } catch(e) {
+        results.push({sku:item.sku, title:item.description, status:"error", error:e.message});
+      }
+      done++;
+      setUpdateProgress({done, total:toUpdate.length});
+      await new Promise(r => setTimeout(r, 250));
+    }
+    setUpdateResults(results);
+    setUpdating(false);
+    setStep(4);
+  }
+
+  const totalShipping = parsed?.shipping_cost || 0;
+  const estimatedShipping = parsed ? estimateShipping(carrier, (parsed.items||[]).reduce((a,x)=>a+(x.weight_kg||0.3)*x.quantity,0), "") : 0;
+
+  return <div>
+    <div style={{marginBottom:16}}>
+      <Label zh="Invoice进货" en="Invoice Import"/>
+      <p style={{fontSize:13, color:C.muted, marginTop:4}}>上传Invoice → AI读取 → 自动更新库存和售价 (来货价 × 1.4)</p>
+    </div>
+
+    {/* Step indicator */}
+    <div style={{display:"flex", gap:0, marginBottom:20}}>
+      {["上传Invoice","审核数据","确认更新","完成"].map((s,i) => {
+        const n = i+1;
+        const active = step===n, done2 = step>n;
+        return <div key={i} style={{flex:1, display:"flex", alignItems:"center"}}>
+          <div style={{display:"flex", alignItems:"center", gap:6, flex:1}}>
+            <div style={{width:28, height:28, borderRadius:"50%", background:done2?C.accent:active?C.blue:C.border, color:done2||active?"#fff":C.muted, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:500, flexShrink:0}}>
+              {done2?"✓":n}
+            </div>
+            <span style={{fontSize:12, color:active?C.blue:done2?C.accent:C.muted, whiteSpace:"nowrap"}}>{s}</span>
+          </div>
+          {i<3 && <div style={{flex:1, height:1, background:step>n?C.accent:C.border, margin:"0 8px"}}/>}
+        </div>;
+      })}
+    </div>
+
+    {/* STEP 1: Upload */}
+    {step===1 && <>
+      <Card style={{marginBottom:12}}>
+        <Label zh="上传发票" en="Upload Invoice"/>
+        <label style={{display:"block", border:`2px dashed ${file?C.accent:C.border}`, borderRadius:10, padding:"32px", textAlign:"center", cursor:"pointer", marginTop:12, background:file?C.accentDim:"transparent", transition:"all .2s"}}>
+          {filePreview ? <img src={filePreview} alt="invoice" style={{maxHeight:200, maxWidth:"100%", borderRadius:8, marginBottom:8}}/> :
+            file ? <div style={{fontSize:32, marginBottom:8}}>📄</div> :
+            <div><div style={{fontSize:40, marginBottom:12}}>📤</div><div style={{fontSize:15, color:C.muted}}>点击上传 Invoice</div><div style={{fontSize:13, color:C.muted, marginTop:4}}>支持 PDF、JPG、PNG</div></div>}
+          {file && <div style={{fontSize:14, color:C.accent, marginTop:4}}>{file.name}</div>}
+          <input ref={fileRef} type="file" accept="image/*,.pdf,application/pdf" onChange={handleFile} style={{display:"none"}}/>
+        </label>
+      </Card>
+
+      <Card style={{marginBottom:12}}>
+        <Label zh="运费设置" en="Shipping Cost"/>
+        <div style={{display:"flex", gap:8, marginTop:12, marginBottom:10}}>
+          {[{id:"invoice",zh:"从Invoice读取"},{id:"manual",zh:"手动输入"},{id:"estimate",zh:"按重量估算"}].map(m =>
+            <button key={m.id} onClick={()=>setShippingMode(m.id)} style={{flex:1, padding:"8px", borderRadius:6, cursor:"pointer", fontSize:13, border:`1px solid ${shippingMode===m.id?C.blue:C.border}`, background:shippingMode===m.id?C.blueDim:C.surface, color:shippingMode===m.id?C.blue:C.muted}}>{m.zh}</button>
+          )}
+        </div>
+        {shippingMode==="manual" && <input value={manualShipping} onChange={e=>setManualShipping(e.target.value)} placeholder="运费总额 USD" style={{width:"100%", background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, padding:"9px 12px", color:C.text, fontSize:14, outline:"none"}}/>}
+        {shippingMode==="estimate" && <div style={{display:"flex", gap:8}}>
+          {["UPS","USPS","FedEx"].map(c => <button key={c} onClick={()=>setCarrier(c)} style={{flex:1, padding:"8px", borderRadius:6, cursor:"pointer", fontSize:13, border:`1px solid ${carrier===c?C.blue:C.border}`, background:carrier===c?C.blueDim:C.surface, color:carrier===c?C.blue:C.muted}}>{c}</button>)}
+        </div>}
+      </Card>
+
+      <Btn onClick={parseInvoice} disabled={!file||parsing} style={{width:"100%", padding:"13px"}}>
+        {parsing ? "AI 读取中..." : "🤖 AI 解析Invoice"}
+      </Btn>
+    </>}
+
+    {/* STEP 2: Review */}
+    {step===2 && parsed && <>
+      <Card style={{marginBottom:12}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start"}}>
+          <div>
+            <div style={{fontSize:15, color:C.text, fontWeight:500}}>{parsed.supplier || "未知供应商"}</div>
+            <div style={{fontSize:13, color:C.muted, marginTop:2}}>Invoice: {parsed.invoice_number || "—"} · {parsed.invoice_date || "—"}</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:13, color:C.muted}}>发票运费</div>
+            <div style={{fontSize:18, color:C.blue, fontWeight:500}}>${(parsed.shipping_cost||0).toFixed(2)}</div>
+          </div>
+        </div>
+        {shippingMode==="estimate" && <div style={{marginTop:10, padding:"8px 12px", background:C.blueDim, borderRadius:6, fontSize:13, color:C.blue}}>
+          📦 {carrier} 估算运费: ${estimatedShipping.toFixed(2)}（来自 {ORIGIN_ZIP}）
+        </div>}
+      </Card>
+
+      <div style={{marginBottom:12}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
+          <Label zh="产品明细" en="Line Items"/>
+          <span style={{fontSize:13, color:C.muted}}>{matched.filter(m=>m.matched).length}/{matched.length} 匹配到Shopify</span>
+        </div>
+        <div style={{display:"flex", flexDirection:"column", gap:8}}>
+          {matched.map((item, idx) => <Card key={idx} style={{border:`1px solid ${item.matched?C.border:"#FECACA"}`, background:item.matched?C.surface:C.dangerDim}}>
+            <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10}}>
+              <div style={{flex:1}}>
+                <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:4}}>
+                  <input type="checkbox" checked={item.include} onChange={e=>updateItem(idx,"include",e.target.checked)} style={{width:16, height:16, accentColor:C.accent}}/>
+                  <span style={{fontSize:15, color:C.text, fontWeight:500}}>{item.description}</span>
+                  {item.matched ? <span style={{fontSize:11, padding:"2px 8px", borderRadius:10, background:C.accentDim, color:C.accent}}>✓ 已匹配</span>
+                    : <span style={{fontSize:11, padding:"2px 8px", borderRadius:10, background:C.dangerDim, color:C.danger}}>✗ SKU未找到</span>}
+                </div>
+                <div style={{display:"flex", gap:12, fontSize:13, color:C.muted, flexWrap:"wrap"}}>
+                  <span>SKU: <strong style={{color:C.text}}>{item.sku||"—"}</strong></span>
+                  <span>数量: <strong style={{color:C.text}}>{item.quantity}</strong></span>
+                  <span>来货价: <strong style={{color:C.text}}>${item.unit_cost}</strong></span>
+                  <span>分摊运费: <strong style={{color:C.blue}}>${item.unitShipping}</strong></span>
+                  <span>总成本/件: <strong style={{color:C.text}}>${item.totalCostPerUnit}</strong></span>
+                </div>
+              </div>
+            </div>
+            {item.matched && <div style={{display:"flex", gap:12, alignItems:"center", padding:"10px 12px", background:C.bg, borderRadius:8}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12, color:C.muted, marginBottom:4}}>建议售价 (×{MARKUP})</div>
+                <div style={{display:"flex", alignItems:"center", gap:8}}>
+                  <span style={{fontSize:13, color:C.muted}}>$</span>
+                  <input type="number" value={item.usePrice} onChange={e=>updateItem(idx,"usePrice",e.target.value)} step="0.01" style={{width:90, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"6px 8px", color:C.text, fontSize:14, outline:"none"}}/>
+                  <span style={{fontSize:12, color:C.muted}}>现价: ${item.currentPrice}</span>
+                  {parseFloat(item.usePrice) !== parseFloat(item.currentPrice) && <span style={{fontSize:12, color:parseFloat(item.usePrice)>parseFloat(item.currentPrice)?C.accent:C.warn}}>
+                    {parseFloat(item.usePrice)>parseFloat(item.currentPrice)?"↑":"↓"} ${Math.abs(parseFloat(item.usePrice)-parseFloat(item.currentPrice)).toFixed(2)}
+                  </span>}
+                </div>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12, color:C.muted, marginBottom:4}}>新库存</div>
+                <div style={{display:"flex", alignItems:"center", gap:8}}>
+                  <input type="number" value={item.newStock} onChange={e=>updateItem(idx,"newStock",parseInt(e.target.value)||0)} style={{width:80, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"6px 8px", color:C.text, fontSize:14, outline:"none"}}/>
+                  <span style={{fontSize:12, color:C.muted}}>现有: {item.currentStock} + {item.quantity} = {item.newStock}</span>
+                </div>
+              </div>
+            </div>}
+          </Card>)}
+        </div>
+      </div>
+
+      <div style={{display:"flex", gap:10}}>
+        <Btn onClick={()=>{setStep(3);}} disabled={!matched.some(m=>m.include&&m.matched)} style={{flex:1, padding:"12px"}}>
+          确认更新 {matched.filter(m=>m.include&&m.matched).length} 个产品 →
+        </Btn>
+        <Btn variant="ghost" onClick={()=>setStep(1)}>← 重新上传</Btn>
+      </div>
+    </>}
+
+    {/* STEP 3: Confirm */}
+    {step===3 && <Card>
+      <Label zh="确认更新" en="Confirm Updates"/>
+      <div style={{marginTop:16, display:"flex", flexDirection:"column", gap:8}}>
+        {matched.filter(m=>m.include&&m.matched).map((item,i) => <div key={i} style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", background:C.bg, borderRadius:8}}>
+          <div>
+            <div style={{fontSize:14, color:C.text, fontWeight:500}}>{item.shopifyProduct?.title}</div>
+            <div style={{fontSize:12, color:C.muted}}>SKU: {item.sku}</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:14, color:C.accent}}>${item.usePrice} <span style={{fontSize:12, color:C.muted}}>← ${item.currentPrice}</span></div>
+            <div style={{fontSize:13, color:C.blue}}>库存: {item.currentStock} → {item.newStock}</div>
+          </div>
+        </div>)}
+      </div>
+      <div style={{marginTop:16, display:"flex", gap:10}}>
+        {updating ? <Card style={{flex:1, background:C.accentDim, borderColor:"#A7F3D0"}}>
+          <div style={{textAlign:"center", padding:"8px 0"}}>
+            <div style={{fontSize:14, color:C.accent, marginBottom:8}}>更新中... {updateProgress.done}/{updateProgress.total}</div>
+            <div style={{background:"#A7F3D0", borderRadius:4, height:6}}>
+              <div style={{background:C.accent, height:6, borderRadius:4, width:`${updateProgress.total?updateProgress.done/updateProgress.total*100:0}%`, transition:"width .3s"}}/>
+            </div>
+          </div>
+        </Card> : <>
+          <Btn onClick={applyUpdates} style={{flex:1, padding:"12px"}}>🚀 确认更新 Shopify</Btn>
+          <Btn variant="ghost" onClick={()=>setStep(2)}>← 返回</Btn>
+        </>}
+      </div>
+    </Card>}
+
+    {/* STEP 4: Done */}
+    {step===4 && <Card>
+      <div style={{textAlign:"center", padding:"20px 0 10px"}}>
+        <div style={{fontSize:48, marginBottom:12}}>✅</div>
+        <div style={{fontSize:18, color:C.text, fontWeight:500, marginBottom:4}}>更新完成！</div>
+        <div style={{fontSize:14, color:C.muted}}>{updateResults.filter(r=>r.status==="success").length} 个产品成功更新</div>
+      </div>
+      <div style={{marginTop:16, display:"flex", flexDirection:"column", gap:6}}>
+        {updateResults.map((r,i) => <div key={i} style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 12px", background:r.status==="success"?C.accentDim:C.dangerDim, borderRadius:6}}>
+          <div>
+            <div style={{fontSize:14, color:C.text}}>{r.title}</div>
+            <div style={{fontSize:12, color:C.muted}}>SKU: {r.sku}</div>
+          </div>
+          {r.status==="success" ? <div style={{textAlign:"right"}}>
+            <div style={{fontSize:14, color:C.accent}}>${r.price}</div>
+            <div style={{fontSize:12, color:C.blue}}>库存: {r.stock}</div>
+          </div> : <div style={{fontSize:13, color:C.danger}}>{r.error}</div>}
+        </div>)}
+      </div>
+      <Btn onClick={()=>{setFile(null);setFilePreview(null);setParsed(null);setMatched([]);setStep(1);}} style={{width:"100%", marginTop:16, padding:"12px"}}>
+        上传下一张Invoice
+      </Btn>
+    </Card>}
   </div>;
 }
 
 function SettingsTab() {
   return <div>
-    <div style={{marginBottom:16}}>
-      <Label zh="设置" en="Settings"/>
-    </div>
+    <div style={{marginBottom:16}}><Label zh="设置" en="Settings"/></div>
     <Card style={{marginBottom:12}}>
       <Label zh="Zoho Mail" en="Connected Accounts"/>
       <div style={{marginTop:12, display:"flex", flexDirection:"column", gap:8}}>
@@ -666,7 +1088,8 @@ function SettingsTab() {
       <div style={{marginTop:10, fontSize:14, color:C.muted}}>
         <p style={{marginBottom:6}}>Worker URL:</p>
         <code style={{fontSize:13, color:C.accent, background:C.bg, padding:"8px 12px", borderRadius:4, display:"block"}}>{WORKER}</code>
-        <p style={{marginTop:8, fontSize:13}}>✅ Zoho Token auto-refresh enabled · ✅ Claude AI proxy enabled · ✅ Shopify API connected</p>
+        <p style={{marginTop:8, fontSize:13}}>✅ Zoho · ✅ Claude AI · ✅ Shopify · ✅ Invoice Import</p>
+        <p style={{marginTop:4, fontSize:13, color:C.muted}}>发货地邮编: {ORIGIN_ZIP} · 定价倍数: ×{1.4}</p>
       </div>
     </Card>
   </div>;
@@ -674,7 +1097,6 @@ function SettingsTab() {
 
 function App() {
   const [activeTab,setActiveTab] = useState("overview");
-
   return <div style={{minHeight:"100vh", background:C.bg, color:C.text}}>
     <div style={{borderBottom:`1px solid ${C.border}`, padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", background:C.surface, boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
       <div>
@@ -692,12 +1114,13 @@ function App() {
         <span style={{marginRight:5}}>{t.icon}</span>{t.zh}
       </button>)}
     </div>
-    <div style={{padding:20, maxWidth: activeTab==="email"?1100:680, margin:"0 auto"}}>
+    <div style={{padding:20, maxWidth: activeTab==="email"?1100:700, margin:"0 auto"}}>
       {activeTab==="overview" && <Overview setTab={setActiveTab}/>}
       {activeTab==="email" && <EmailTab/>}
       {activeTab==="delivery" && <DeliveryTab/>}
       {activeTab==="marketing" && <MarketingTab/>}
       {activeTab==="products" && <ProductsTab/>}
+      {activeTab==="invoice" && <InvoiceTab/>}
       {activeTab==="settings" && <SettingsTab/>}
     </div>
   </div>;
