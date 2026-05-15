@@ -9,11 +9,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0A0A0F;color:#E2DDD6;font-family:sans-serif}
-textarea,input{color-scheme:dark}
+body{background:#FFFFFF;color:#1A1A2E;font-family:sans-serif;font-size:16px}
+textarea,input{color-scheme:light}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#13131A}::-webkit-scrollbar-thumb{background:#2E2E40;border-radius:3px}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#F1F5F9}::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:3px}
 </style>
 </head>
 <body>
@@ -27,10 +27,10 @@ const AIDS = {pan:"5644395000000008002", sales:"5142150000000008002"};
 function getApiKey() { return localStorage.getItem("coco_api_key") || ""; }
 
 const C = {
-  bg:"#0A0A0F", surface:"#13131A", border:"#1E1E2A", borderHover:"#2E2E40",
-  text:"#E2DDD6", muted:"#5A5A6E", accent:"#6EE7B7", accentDim:"#1A3D30",
-  warn:"#FCD34D", warnDim:"#3D3010", danger:"#F87171", dangerDim:"#3D1010",
-  blue:"#60A5FA", blueDim:"#102040",
+  bg:"#F8F9FA", surface:"#FFFFFF", border:"#E2E8F0", borderHover:"#CBD5E1",
+  text:"#1A1A2E", muted:"#64748B", accent:"#059669", accentDim:"#ECFDF5",
+  warn:"#D97706", warnDim:"#FFFBEB", danger:"#DC2626", dangerDim:"#FEF2F2",
+  blue:"#2563EB", blueDim:"#EFF6FF",
 };
 
 const EMAIL_SYSTEM = `You are a professional customer service representative for Coco Island Mart, an online store. Reply to customer emails in English only. Be warm, professional, and concise (under 150 words). Identify the issue type and respond accordingly:
@@ -40,8 +40,33 @@ const EMAIL_SYSTEM = `You are a professional customer service representative for
 4. Complaint - apologize sincerely, promise to follow up
 Sign off as: "Best regards,\nCoco Island Mart Customer Service Team"`;
 
-const PRODUCT_SYSTEM = `You are a professional e-commerce copywriter. Generate compelling product copy based on product information.
-Format: [Product Title] under 15 words\n[Key Features] 3 core selling points\n[Product Description] 100-150 words, bilingual Chinese/English separated by ---\n[SEO Tags] 5 keywords\nTone: professional, attractive, value-focused`;
+const PRODUCT_SYSTEM = `You are a professional e-commerce copywriter and SEO expert specializing in high-converting product listings. Generate compelling product copy based on product information.
+
+Format your response EXACTLY as follows:
+
+[Product Title]
+Write a compelling title under 15 words with primary keyword first
+
+[Key Features]
+- Feature 1: specific benefit
+- Feature 2: specific benefit  
+- Feature 3: specific benefit
+
+[Product Description]
+Write 100-150 words in English focusing on benefits and lifestyle appeal
+---
+用100-150字写中文版本，强调产品价值和生活方式
+
+[High-Traffic SEO Keywords]
+Primary: (highest search volume keyword)
+Secondary: keyword2, keyword3, keyword4, keyword5
+Long-tail: "exact phrase buyers search for", "another buyer phrase"
+Tags: tag1, tag2, tag3, tag4, tag5, tag6, tag7, tag8, tag9, tag10
+
+[Suggested Price Range]
+Based on market research, suggest competitive price range
+
+Tone: professional, conversion-focused, highlight unique value proposition`;
 
 const MARKETING_SYSTEM = `You are an e-commerce marketing copywriter for Coco Island Mart. Generate local delivery promotional copy. Requirements: highlight same-day/next-day delivery advantage, friendly tone, bilingual Chinese/English. Format: Chinese version first, then English version, separated by ---.`;
 
@@ -66,32 +91,32 @@ async function callClaude({system, userContent}) {
 }
 
 function Btn({children, onClick, variant="primary", disabled, style={}}) {
-  const base = {border:"none", borderRadius:6, cursor:disabled?"not-allowed":"pointer", fontSize:12, letterSpacing:.5, padding:"8px 16px", transition:"all .15s", fontWeight:500};
+  const base = {border:"none", borderRadius:6, cursor:disabled?"not-allowed":"pointer", fontSize:14, letterSpacing:.5, padding:"9px 18px", transition:"all .15s", fontWeight:500};
   const v = {
-    primary: {background:disabled?C.border:C.accent, color:disabled?C.muted:"#0A0A0F"},
+    primary: {background:disabled?C.border:C.accent, color:disabled?C.muted:"#FFFFFF"},
     ghost: {background:"transparent", color:C.muted, border:`1px solid ${C.border}`}
   };
   return <button onClick={onClick} disabled={disabled} style={{...base, ...v[variant], ...style}}>{children}</button>;
 }
 
 function Card({children, style={}}) {
-  return <div style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:20, ...style}}>{children}</div>;
+  return <div style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:20, boxShadow:"0 1px 3px rgba(0,0,0,0.06)", ...style}}>{children}</div>;
 }
 
 function Label({zh, en}) {
-  return <span style={{fontSize:11, color:C.muted, letterSpacing:2, textTransform:"uppercase"}}>{zh} <span style={{opacity:.5}}>/ {en}</span></span>;
+  return <span style={{fontSize:13, color:C.muted, letterSpacing:2, textTransform:"uppercase"}}>{zh} <span style={{opacity:.5}}>/ {en}</span></span>;
 }
 
 function TA({value, onChange, placeholder, rows=4}) {
   const [f,setF] = useState(false);
   return <textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} rows={rows}
     onFocus={()=>setF(true)} onBlur={()=>setF(false)}
-    style={{width:"100%", background:C.bg, border:`1px solid ${f?C.borderHover:C.border}`, borderRadius:8, padding:"12px", color:C.text, fontSize:13, resize:"vertical", outline:"none", lineHeight:1.6, boxSizing:"border-box", transition:"border-color .15s"}}/>;
+    style={{width:"100%", background:C.bg, border:`1px solid ${f?C.borderHover:C.border}`, borderRadius:8, padding:"12px", color:C.text, fontSize:15, resize:"vertical", outline:"none", lineHeight:1.6, boxSizing:"border-box", transition:"border-color .15s"}}/>;
 }
 
 function CopyBtn({text}) {
   const [c,setC] = useState(false);
-  return <Btn variant="ghost" style={{fontSize:11, padding:"4px 12px"}}
+  return <Btn variant="ghost" style={{fontSize:12, padding:"4px 12px"}}
     onClick={()=>{navigator.clipboard.writeText(text); setC(true); setTimeout(()=>setC(false),2000)}}>
     {c?"✓ Copied":"Copy"}
   </Btn>;
@@ -116,9 +141,9 @@ function Overview({setTab}) {
   return <div>
     <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:24}}>
       {stats.map((s,i) => <Card key={i}>
-        <div style={{fontSize:11, color:C.muted, marginBottom:8}}>{s.zh} / {s.en}</div>
-        <div style={{fontSize:28, color:s.color, fontFamily:"Georgia,serif", lineHeight:1}}>{s.value}</div>
-        <div style={{fontSize:11, color:C.muted, marginTop:4}}>{s.delta} vs yesterday</div>
+        <div style={{fontSize:13, color:C.muted, marginBottom:8}}>{s.zh} / {s.en}</div>
+        <div style={{fontSize:32, color:s.color, fontFamily:"Georgia,serif", lineHeight:1}}>{s.value}</div>
+        <div style={{fontSize:13, color:C.muted, marginTop:4}}>{s.delta} vs yesterday</div>
       </Card>)}
     </div>
     <div style={{marginBottom:12}}><Label zh="快速操作" en="Quick Actions"/></div>
@@ -127,14 +152,14 @@ function Overview({setTab}) {
         {zh:"回复客户邮件", en:"Reply Emails", tab:"email", icon:"✉", color:C.blue},
         {zh:"管理配送区域", en:"Delivery Zones", tab:"delivery", icon:"⊛", color:C.accent},
         {zh:"生成推广文案", en:"Generate Copy", tab:"marketing", icon:"◉", color:C.warn},
-        {zh:"加新产品", en:"Add Product", tab:"products", icon:"⊕", color:"#A78BFA"},
+        {zh:"加新产品", en:"Add Product", tab:"products", icon:"⊕", color:"#7C3AED"},
       ].map((a,i) => <button key={i} onClick={()=>setTab(a.tab)}
-        style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"14px", cursor:"pointer", textAlign:"left", transition:"border-color .15s"}}
+        style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"14px", cursor:"pointer", textAlign:"left", transition:"border-color .15s", boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}
         onMouseEnter={e=>e.currentTarget.style.borderColor=C.borderHover}
         onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
-        <div style={{fontSize:18, marginBottom:6}}>{a.icon}</div>
-        <div style={{fontSize:12, color:a.color, fontWeight:500}}>{a.zh}</div>
-        <div style={{fontSize:10, color:C.muted}}>{a.en}</div>
+        <div style={{fontSize:20, marginBottom:6}}>{a.icon}</div>
+        <div style={{fontSize:14, color:a.color, fontWeight:500}}>{a.zh}</div>
+        <div style={{fontSize:12, color:C.muted}}>{a.en}</div>
       </button>)}
     </div>
     <Card style={{marginTop:16}}>
@@ -145,15 +170,14 @@ function Overview({setTab}) {
           {name:"Zoho Mail 收件箱", ok:true, status:"已连接"},
           {name:"Shopify 本地配送", ok:true, status:"已启用"},
         ].map((s,i) => <div key={i} style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-          <span style={{fontSize:12, color:C.text}}>{s.name}</span>
-          <span style={{fontSize:11, padding:"2px 10px", borderRadius:20, background:s.ok?C.accentDim:C.warnDim, color:s.ok?C.accent:C.warn, border:`1px solid ${s.ok?"#1A4A35":"#4A3A10"}`}}>{s.status}</span>
+          <span style={{fontSize:14, color:C.text}}>{s.name}</span>
+          <span style={{fontSize:13, padding:"3px 12px", borderRadius:20, background:s.ok?C.accentDim:C.warnDim, color:s.ok?C.accent:C.warn, border:`1px solid ${s.ok?"#A7F3D0":"#FDE68A"}`}}>{s.status}</span>
         </div>)}
       </div>
     </Card>
   </div>;
 }
 
-// ── EMAIL TAB WITH REAL ZOHO INBOX ────────────────────────────────
 function EmailTab() {
   const [account, setAccount] = useState("sales");
   const [emails, setEmails] = useState([]);
@@ -163,7 +187,6 @@ function EmailTab() {
   const [reply, setReply] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [tokenStatus, setTokenStatus] = useState("");
 
   function fmt(ts) {
     if (!ts) return "";
@@ -211,54 +234,52 @@ function EmailTab() {
     setLoading(false);
   }
 
-  return <div style={{display:"grid", gridTemplateColumns:"220px 1fr", gap:12, minHeight:500}}>
-    {/* LEFT: Inbox */}
-    <div style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, display:"flex", flexDirection:"column", overflow:"hidden"}}>
+  return <div style={{display:"grid", gridTemplateColumns:"240px 1fr", gap:12, minHeight:500}}>
+    <div style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
       <div style={{padding:"12px", borderBottom:`1px solid ${C.border}`, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-        <span style={{fontSize:11, color:C.muted, letterSpacing:1, textTransform:"uppercase"}}>Inbox</span>
-        <button onClick={()=>loadInbox(account)} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:14}}>↻</button>
+        <span style={{fontSize:13, color:C.muted, letterSpacing:1, textTransform:"uppercase"}}>Inbox</span>
+        <button onClick={()=>loadInbox(account)} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:16}}>↻</button>
       </div>
       <div style={{padding:"8px", borderBottom:`1px solid ${C.border}`, display:"flex", gap:4}}>
         {["sales","pan"].map(acc => <button key={acc} onClick={()=>switchAccount(acc)}
-          style={{flex:1, padding:"4px", borderRadius:4, cursor:"pointer", fontSize:10, border:"none", background:account===acc?C.accentDim:C.bg, color:account===acc?C.accent:C.muted}}>
+          style={{flex:1, padding:"5px", borderRadius:4, cursor:"pointer", fontSize:12, border:"none", background:account===acc?C.accentDim:C.bg, color:account===acc?C.accent:C.muted}}>
           {acc}@
         </button>)}
       </div>
       <div style={{flex:1, overflowY:"auto"}}>
-        {loadingInbox && <div style={{padding:20, textAlign:"center", color:C.muted, fontSize:12}}>Loading...</div>}
-        {!loadingInbox && emails.length === 0 && <div style={{padding:20, textAlign:"center", color:C.muted, fontSize:12}}>No emails</div>}
+        {loadingInbox && <div style={{padding:20, textAlign:"center", color:C.muted, fontSize:14}}>Loading...</div>}
+        {!loadingInbox && emails.length === 0 && <div style={{padding:20, textAlign:"center", color:C.muted, fontSize:14}}>No emails</div>}
         {emails.map((e,i) => <div key={i} onClick={()=>selectEmail(e)}
-          style={{padding:"10px 12px", borderBottom:`1px solid ${C.border}`, cursor:"pointer", background:selectedEmail?.messageId===e.messageId?C.accentDim:C.bg, borderLeft:`2px solid ${selectedEmail?.messageId===e.messageId?C.accent:"transparent"}`}}>
+          style={{padding:"10px 12px", borderBottom:`1px solid ${C.border}`, cursor:"pointer", background:selectedEmail?.messageId===e.messageId?C.accentDim:C.surface, borderLeft:`3px solid ${selectedEmail?.messageId===e.messageId?C.accent:"transparent"}`}}>
           <div style={{display:"flex", justifyContent:"space-between", marginBottom:3}}>
-            <span style={{fontSize:11, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:130}}>{e.fromAddress||e.sender||"Unknown"}</span>
-            <span style={{fontSize:10, color:C.muted, flexShrink:0}}>{fmt(e.receivedTime||e.sentDateInGMT)}</span>
+            <span style={{fontSize:13, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:140}}>{e.fromAddress||e.sender||"Unknown"}</span>
+            <span style={{fontSize:11, color:C.muted, flexShrink:0}}>{fmt(e.receivedTime||e.sentDateInGMT)}</span>
           </div>
-          <div style={{fontSize:11, color:C.muted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{e.subject||"(no subject)"}</div>
+          <div style={{fontSize:12, color:C.muted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{e.subject||"(no subject)"}</div>
         </div>)}
       </div>
     </div>
 
-    {/* RIGHT: Reply */}
     <div>
       <div style={{marginBottom:12}}>
         <Label zh="自动回邮" en="AI Auto-Reply"/>
-        <p style={{fontSize:11, color:C.muted, margin:"4px 0 0"}}>Claude AI · Zoho Mail · Cloudflare 自动续期</p>
+        <p style={{fontSize:13, color:C.muted, margin:"4px 0 0"}}>Claude AI · Zoho Mail · Cloudflare 自动续期</p>
       </div>
       {selectedEmail && <Card style={{marginBottom:10, padding:"12px 14px"}}>
-        <div style={{fontSize:11, color:C.muted, marginBottom:3}}>From: {selectedEmail.fromAddress||selectedEmail.sender}</div>
-        <div style={{fontSize:13, color:C.text, fontWeight:500}}>{selectedEmail.subject||"(no subject)"}</div>
+        <div style={{fontSize:13, color:C.muted, marginBottom:3}}>From: {selectedEmail.fromAddress||selectedEmail.sender}</div>
+        <div style={{fontSize:15, color:C.text, fontWeight:500}}>{selectedEmail.subject||"(no subject)"}</div>
       </Card>}
       <div style={{marginBottom:10}}><TA value={input} onChange={setInput} placeholder="Select an email from inbox, or paste customer message..." rows={4}/></div>
-      <Btn onClick={gen} disabled={loading||!input.trim()} style={{width:"100%", padding:"11px", marginBottom:10}}>
+      <Btn onClick={gen} disabled={loading||!input.trim()} style={{width:"100%", padding:"12px", marginBottom:10}}>
         {loading ? "Generating..." : "生成自动回复 / Generate Reply"}
       </Btn>
-      {err && <p style={{color:C.danger, fontSize:13, marginBottom:10}}>{err}</p>}
+      {err && <p style={{color:C.danger, fontSize:14, marginBottom:10}}>{err}</p>}
       {reply && <Card style={{animation:"fadeIn .3s ease"}}>
         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
           <Label zh="AI 回复" en="Reply"/>
           <CopyBtn text={reply}/>
         </div>
-        <p style={{fontSize:13, lineHeight:1.8, color:"#C8C5BF", margin:0, whiteSpace:"pre-wrap"}}>{reply}</p>
+        <p style={{fontSize:15, lineHeight:1.8, color:C.text, margin:0, whiteSpace:"pre-wrap"}}>{reply}</p>
       </Card>}
     </div>
   </div>;
@@ -274,40 +295,40 @@ function DeliveryTab() {
   ]);
   const [nc,setNc] = useState("");
   const [nci,setNci] = useState("");
-  const inp = {flex:1, background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, padding:"8px 10px", color:C.text, fontSize:12, outline:"none"};
+  const inp = {flex:1, background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, padding:"9px 12px", color:C.text, fontSize:14, outline:"none"};
 
   return <div>
     <div style={{marginBottom:16}}>
       <Label zh="本地配送管理" en="Local Delivery Zones"/>
-      <p style={{fontSize:12, color:C.muted, margin:"6px 0 0"}}>按邮政编码+城市双重验证 / Postcode + City</p>
+      <p style={{fontSize:14, color:C.muted, margin:"6px 0 0"}}>按邮政编码+城市双重验证 / Postcode + City</p>
     </div>
     <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16}}>
       <Card>
-        <div style={{fontSize:22, color:C.accent, fontFamily:"Georgia,serif"}}>{zones.filter(z=>z.active).length}</div>
-        <div style={{fontSize:11, color:C.muted, marginTop:4}}>启用区域 / Active Zones</div>
+        <div style={{fontSize:32, color:C.accent, fontFamily:"Georgia,serif"}}>{zones.filter(z=>z.active).length}</div>
+        <div style={{fontSize:13, color:C.muted, marginTop:4}}>启用区域 / Active Zones</div>
       </Card>
       <Card>
-        <div style={{fontSize:22, color:C.blue, fontFamily:"Georgia,serif"}}>{zones.filter(z=>z.active).reduce((a,z)=>a+z.orders,0)}</div>
-        <div style={{fontSize:11, color:C.muted, marginTop:4}}>今日配送 / Today</div>
+        <div style={{fontSize:32, color:C.blue, fontFamily:"Georgia,serif"}}>{zones.filter(z=>z.active).reduce((a,z)=>a+z.orders,0)}</div>
+        <div style={{fontSize:13, color:C.muted, marginTop:4}}>今日配送 / Today</div>
       </Card>
     </div>
     <Card style={{marginBottom:12}}>
       <Label zh="配送区域" en="Zone List"/>
       <div style={{marginTop:12, display:"flex", flexDirection:"column", gap:8}}>
-        {zones.map((z,i) => <div key={i} style={{display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px", background:C.bg, borderRadius:8, border:`1px solid ${z.active?"#1A4A35":C.border}`}}>
+        {zones.map((z,i) => <div key={i} style={{display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 14px", background:C.bg, borderRadius:8, border:`1px solid ${z.active?C.accent:C.border}`}}>
           <div style={{display:"flex", alignItems:"center", gap:10}}>
-            <div style={{width:8, height:8, borderRadius:"50%", background:z.active?C.accent:C.muted, boxShadow:z.active?`0 0 6px ${C.accent}`:"none"}}/>
-            <span style={{fontSize:13, color:C.text, fontFamily:"monospace"}}>{z.code}</span>
-            <span style={{fontSize:12, color:C.muted}}>{z.city}</span>
+            <div style={{width:8, height:8, borderRadius:"50%", background:z.active?C.accent:C.muted}}/>
+            <span style={{fontSize:15, color:C.text, fontFamily:"monospace"}}>{z.code}</span>
+            <span style={{fontSize:14, color:C.muted}}>{z.city}</span>
           </div>
           <div style={{display:"flex", alignItems:"center", gap:8}}>
-            {z.orders>0 && <span style={{fontSize:11, color:C.blue}}>{z.orders} orders</span>}
+            {z.orders>0 && <span style={{fontSize:13, color:C.blue}}>{z.orders} orders</span>}
             <button onClick={()=>setZones(zones.map((zn,ix)=>ix===i?{...zn,active:!zn.active}:zn))}
-              style={{padding:"3px 10px", borderRadius:20, fontSize:11, cursor:"pointer", border:"none", background:z.active?C.accentDim:C.border, color:z.active?C.accent:C.muted}}>
+              style={{padding:"4px 12px", borderRadius:20, fontSize:13, cursor:"pointer", border:"none", background:z.active?C.accentDim:C.border, color:z.active?C.accent:C.muted}}>
               {z.active?"启用":"停用"}
             </button>
             <button onClick={()=>setZones(zones.filter((_,ix)=>ix!==i))}
-              style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:16}}>×</button>
+              style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18}}>×</button>
           </div>
         </div>)}
       </div>
@@ -346,13 +367,13 @@ function MarketingTab() {
   return <div>
     <div style={{marginBottom:16}}>
       <Label zh="推广工具" en="Marketing Tools"/>
-      <p style={{fontSize:12, color:C.muted, margin:"6px 0 0"}}>AI 生成本地配送推广文案</p>
+      <p style={{fontSize:14, color:C.muted, margin:"6px 0 0"}}>AI 生成本地配送推广文案</p>
     </div>
     <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16}}>
       {templates.map((t,i) => <button key={i} onClick={()=>{setSel(i); gen(t.prompt);}}
-        style={{background:sel===i?C.accentDim:C.surface, border:`1px solid ${sel===i?"#1A4A35":C.border}`, borderRadius:8, padding:"14px 12px", cursor:"pointer", textAlign:"left", transition:"all .15s"}}>
-        <div style={{fontSize:12, color:sel===i?C.accent:C.text, fontWeight:500}}>{t.zh}</div>
-        <div style={{fontSize:10, color:C.muted, marginTop:2}}>{t.en}</div>
+        style={{background:sel===i?C.accentDim:C.surface, border:`1px solid ${sel===i?C.accent:C.border}`, borderRadius:8, padding:"14px 12px", cursor:"pointer", textAlign:"left", transition:"all .15s", boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
+        <div style={{fontSize:14, color:sel===i?C.accent:C.text, fontWeight:500}}>{t.zh}</div>
+        <div style={{fontSize:12, color:C.muted, marginTop:2}}>{t.en}</div>
       </button>)}
     </div>
     <Card style={{marginBottom:12}}>
@@ -362,38 +383,38 @@ function MarketingTab() {
     </Card>
     {loading && <Card><div style={{display:"flex", alignItems:"center", gap:10}}>
       <div style={{width:8, height:8, borderRadius:"50%", background:C.accent, animation:"pulse 1s infinite"}}/>
-      <span style={{fontSize:12, color:C.muted}}>AI 生成中...</span>
+      <span style={{fontSize:14, color:C.muted}}>AI 生成中...</span>
     </div></Card>}
     {result && !loading && <Card>
       <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
         <Label zh="生成结果" en="Generated Copy"/>
         <CopyBtn text={result}/>
       </div>
-      <p style={{fontSize:13, lineHeight:1.9, color:"#C8C5BF", margin:0, whiteSpace:"pre-wrap"}}>{result}</p>
+      <p style={{fontSize:15, lineHeight:1.9, color:C.text, margin:0, whiteSpace:"pre-wrap"}}>{result}</p>
     </Card>}
   </div>;
 }
 
 function ProductsTab() {
-  const [view, setView] = useState("list");
-  const [shopifyProducts, setShopifyProducts] = useState([]);
-  const [loadingProducts, setLoadingProducts] = useState(false);
-  const [editingProduct, setEditingProduct] = useState(null);
-  const [editForm, setEditForm] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [mode, setMode] = useState("manual");
-  const [form, setForm] = useState({name:"", category:"", price:"", comparePrice:"", stock:"", sku:"", barcode:"", weight:"", vendor:"Coco Island Mart", tags:"", keywords:""});
-  const [imgDesc, setImgDesc] = useState("");
-  const [bulk, setBulk] = useState("");
-  const [gen, setGen] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [imgFile, setImgFile] = useState(null);
-  const [imgPrev, setImgPrev] = useState(null);
-  const [searchQ, setSearchQ] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [msg, setMsg] = useState("");
+  const [products,setProducts] = useState([]);
+  const [loadingProducts,setLoadingProducts] = useState(false);
+  const [filterStatus,setFilterStatus] = useState("all");
+  const [search,setSearch] = useState("");
+  const [view,setView] = useState("list");
+  const [mode,setMode] = useState("manual");
+  const [form,setForm] = useState({name:"", category:"", price:"", comparePrice:"", stock:"", sku:"", barcode:"", weight:"", vendor:"Coco Island Mart", tags:"", keywords:""});
 
-  const inp = {width:"100%", background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, padding:"9px 12px", color:C.text, fontSize:12, outline:"none", boxSizing:"border-box"};
+  useEffect(() => { loadProducts(); }, []);
+
+  async function loadProducts() {
+    setLoadingProducts(true);
+    try {
+      const res = await fetch(WORKER + "/shopify/products?limit=50");
+      const data = await res.json();
+      setProducts(data.products || []);
+    } catch(e) { console.error("Failed to load products:", e); }
+    setLoadingProducts(false);
+  }
 
   function generateSKU(name, category) {
     const prefix = (category||"GEN").substring(0,3).toUpperCase();
@@ -409,97 +430,14 @@ function ProductsTab() {
     return [...digits, check].join('');
   }
 
-  async function loadShopifyProducts() {
-    setLoadingProducts(true); setMsg("");
-    try {
-      const res = await fetch(WORKER + "/shopify/products?limit=50");
-      const data = await res.json();
-      setShopifyProducts(data.products || []);
-    } catch(e) { setMsg("Failed to load: " + e.message); }
-    setLoadingProducts(false);
-  }
+  const [imgDesc,setImgDesc] = useState("");
+  const [bulk,setBulk] = useState("");
+  const [gen,setGen] = useState(null);
+  const [loading,setLoading] = useState(false);
+  const [imgFile,setImgFile] = useState(null);
+  const [imgPrev,setImgPrev] = useState(null);
 
-  useEffect(() => { loadShopifyProducts(); }, []);
-
-  function startEdit(product) {
-    setEditingProduct(product);
-    const v = product.variants?.[0] || {};
-    setEditForm({
-      title: product.title || "",
-      status: product.status || "draft",
-      vendor: product.vendor || "",
-      product_type: product.product_type || "",
-      tags: product.tags || "",
-      price: v.price || "",
-      compare_at_price: v.compare_at_price || "",
-      sku: v.sku || "",
-      barcode: v.barcode || "",
-      inventory_quantity: v.inventory_quantity ?? "",
-      weight: v.weight || "",
-    });
-    setView("edit");
-  }
-
-  async function saveEdit() {
-    setSaving(true); setMsg("");
-    try {
-      // Update product fields
-      const productRes = await fetch(`${WORKER}/shopify/products/${editingProduct.id}`, {
-        method: "PUT",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ product: {
-          id: editingProduct.id,
-          title: editForm.title,
-          status: editForm.status,
-          vendor: editForm.vendor,
-          product_type: editForm.product_type,
-          tags: editForm.tags,
-        }})
-      });
-      // Update variant (price, inventory)
-      const variantId = editingProduct.variants?.[0]?.id;
-      if (variantId) {
-        await fetch(`${WORKER}/shopify/variants/${variantId}`, {
-          method: "PUT",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({ variant: {
-            id: variantId,
-            price: editForm.price,
-            compare_at_price: editForm.compare_at_price || null,
-            sku: editForm.sku,
-            barcode: editForm.barcode,
-            weight: parseFloat(editForm.weight) || 0,
-            inventory_quantity: parseInt(editForm.inventory_quantity) || 0,
-          }})
-        });
-      }
-      setMsg("✅ Saved successfully!");
-      await loadShopifyProducts();
-      setTimeout(() => setView("list"), 1000);
-    } catch(e) { setMsg("❌ Save failed: " + e.message); }
-    setSaving(false);
-  }
-
-  async function deleteProduct(productId) {
-    if (!confirm("Delete this product from Shopify?")) return;
-    try {
-      await fetch(`${WORKER}/shopify/products/${productId}`, { method: "DELETE" });
-      setMsg("✅ Deleted!");
-      await loadShopifyProducts();
-    } catch(e) { setMsg("❌ " + e.message); }
-  }
-
-  async function toggleStatus(product) {
-    const newStatus = product.status === "active" ? "draft" : "active";
-    try {
-      await fetch(`${WORKER}/shopify/products/${product.id}`, {
-        method: "PUT",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ product: { id: product.id, status: newStatus }})
-      });
-      await loadShopifyProducts();
-    } catch(e) { setMsg("❌ " + e.message); }
-  }
+  const inp = {width:"100%", background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, padding:"10px 12px", color:C.text, fontSize:14, outline:"none", boxSizing:"border-box"};
 
   function handleImg(e) {
     const f = e.target.files[0]; if(!f) return;
@@ -549,7 +487,8 @@ function ProductsTab() {
         variants: [{
           price: form.price?.replace(/[^0-9.]/g,"") || "0",
           compare_at_price: form.comparePrice?.replace(/[^0-9.]/g,"") || undefined,
-          sku, barcode,
+          sku: sku,
+          barcode: barcode,
           weight: parseFloat(form.weight)||0,
           weight_unit: "kg",
           inventory_quantity: parseInt(form.stock)||0,
@@ -563,9 +502,9 @@ function ProductsTab() {
       });
       const data = await res.json();
       if (data.product) {
-        alert("✅ Uploaded to Shopify as Draft!\nProduct ID: " + data.product.id + "\nGo to Shopify admin to publish.");
-        await loadShopifyProducts();
+        alert("✅ Product uploaded to Shopify!\nID: " + data.product.id + "\nStatus: Draft");
         setView("list");
+        loadProducts();
       } else {
         alert("❌ Upload failed: " + JSON.stringify(data.errors || data));
       }
@@ -573,124 +512,72 @@ function ProductsTab() {
     setLoading(false);
   }
 
-  const filtered = shopifyProducts.filter(p => {
-    const matchSearch = !searchQ || p.title?.toLowerCase().includes(searchQ.toLowerCase()) || p.tags?.toLowerCase().includes(searchQ.toLowerCase());
+  const filteredProducts = products.filter(p => {
     const matchStatus = filterStatus === "all" || p.status === filterStatus;
-    return matchSearch && matchStatus;
+    const matchSearch = !search || p.title?.toLowerCase().includes(search.toLowerCase()) || p.variants?.[0]?.sku?.toLowerCase().includes(search.toLowerCase());
+    return matchStatus && matchSearch;
   });
 
-  // LIST VIEW
-  if (view === "list") return <div>
+  if(view==="list") return <div>
     <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16}}>
       <div>
         <Label zh="产品管理" en="Product Manager"/>
-        <p style={{fontSize:12, color:C.muted, margin:"6px 0 0"}}>{shopifyProducts.length} products from Shopify · Live sync</p>
+        <p style={{fontSize:14, color:C.muted, margin:"6px 0 0"}}>{products.length} products from Shopify · Live sync</p>
       </div>
       <div style={{display:"flex", gap:8}}>
-        <button onClick={loadShopifyProducts} style={{background:"transparent", border:`1px solid ${C.border}`, borderRadius:6, color:C.muted, cursor:"pointer", fontSize:12, padding:"6px 12px"}}>↻ Refresh</button>
-        <Btn onClick={()=>{setView("add"); setGen(null); setForm({name:"", category:"", price:"", comparePrice:"", stock:"", sku:"", barcode:"", weight:"", vendor:"Coco Island Mart", tags:"", keywords:""});}}>+ Add Product</Btn>
+        <Btn variant="ghost" onClick={loadProducts}>↻ Refresh</Btn>
+        <Btn onClick={()=>setView("add")}>+ Add Product</Btn>
       </div>
     </div>
-
-    {msg && <div style={{padding:"8px 12px", background:msg.includes("✅")?C.accentDim:C.dangerDim, borderRadius:6, fontSize:12, color:msg.includes("✅")?C.accent:C.danger, marginBottom:12}}>{msg}</div>}
-
     <div style={{display:"flex", gap:8, marginBottom:12}}>
-      <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="🔍 Search products..." style={{...inp, flex:1}}/>
-      <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{...inp, width:"auto", cursor:"pointer"}}>
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search products..." style={{flex:1, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"9px 12px", color:C.text, fontSize:14, outline:"none"}}/>
+      <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"9px 12px", color:C.text, fontSize:14, outline:"none"}}>
         <option value="all">All Status</option>
         <option value="active">Active</option>
         <option value="draft">Draft</option>
         <option value="archived">Archived</option>
       </select>
     </div>
-
-    {loadingProducts && <Card><div style={{display:"flex", alignItems:"center", gap:10}}><div style={{width:8, height:8, borderRadius:"50%", background:C.accent, animation:"pulse 1s infinite"}}/><span style={{fontSize:12, color:C.muted}}>Loading from Shopify...</span></div></Card>}
-
-    <div style={{display:"flex", flexDirection:"column", gap:6}}>
-      {filtered.map(p => {
-        const v = p.variants?.[0] || {};
-        const imgUrl = p.image?.src;
-        return <div key={p.id} style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"12px 14px", display:"flex", alignItems:"center", gap:12}}>
-          {imgUrl && <img src={imgUrl} alt={p.title} style={{width:44, height:44, objectFit:"cover", borderRadius:6, flexShrink:0}}/>}
-          {!imgUrl && <div style={{width:44, height:44, background:C.bg, borderRadius:6, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18}}>📦</div>}
-          <div style={{flex:1, minWidth:0}}>
-            <div style={{fontSize:13, color:C.text, fontWeight:500, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p.title}</div>
-            <div style={{display:"flex", gap:8, marginTop:3, flexWrap:"wrap"}}>
-              <span style={{fontSize:11, color:C.accent}}>${v.price}</span>
-              {v.compare_at_price && <span style={{fontSize:11, color:C.muted, textDecoration:"line-through"}}>${v.compare_at_price}</span>}
-              <span style={{fontSize:11, color:C.muted}}>{p.product_type||"—"}</span>
-              <span style={{fontSize:11, color:v.inventory_quantity===0?C.danger:C.muted}}>Stock: {v.inventory_quantity??"?"}</span>
-              {v.sku && <span style={{fontSize:10, color:C.muted, fontFamily:"monospace"}}>SKU: {v.sku}</span>}
+    {loadingProducts && <Card><div style={{textAlign:"center", padding:20, color:C.muted}}>Loading products...</div></Card>}
+    <div style={{display:"flex", flexDirection:"column", gap:8}}>
+      {filteredProducts.map(p => {
+        const variant = p.variants?.[0] || {};
+        const img = p.images?.[0]?.src;
+        const stock = variant.inventory_quantity ?? 0;
+        return <div key={p.id} style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center", boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+          <div style={{display:"flex", alignItems:"center", gap:12}}>
+            {img ? <img src={img} alt="" style={{width:44, height:44, borderRadius:6, objectFit:"cover", border:`1px solid ${C.border}`}}/> :
+              <div style={{width:44, height:44, borderRadius:6, background:C.bg, border:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18}}>📦</div>}
+            <div>
+              <div style={{fontSize:15, color:C.text, fontWeight:500, maxWidth:300, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p.title}</div>
+              <div style={{display:"flex", gap:8, marginTop:4, flexWrap:"wrap"}}>
+                <span style={{fontSize:13, color:C.accent, fontWeight:500}}>${variant.price}</span>
+                <span style={{fontSize:13, color:stock===0?C.danger:stock<5?C.warn:C.muted}}>Stock: {stock}</span>
+                {variant.sku && <span style={{fontSize:12, color:C.muted}}>SKU: {variant.sku}</span>}
+                {p.product_type && <span style={{fontSize:12, color:C.muted}}>{p.product_type}</span>}
+              </div>
             </div>
           </div>
-          <div style={{display:"flex", gap:6, alignItems:"center", flexShrink:0}}>
-            <button onClick={()=>toggleStatus(p)} style={{padding:"3px 10px", borderRadius:20, fontSize:11, cursor:"pointer", border:"none", background:p.status==="active"?C.accentDim:C.border, color:p.status==="active"?C.accent:C.muted}}>
+          <div style={{display:"flex", gap:8, alignItems:"center"}}>
+            <span style={{fontSize:13, padding:"3px 10px", borderRadius:20, background:p.status==="active"?C.accentDim:C.bg, color:p.status==="active"?C.accent:C.muted, border:`1px solid ${p.status==="active"?C.accent:C.border}`}}>
               {p.status==="active"?"Active":"Draft"}
-            </button>
-            <button onClick={()=>startEdit(p)} style={{padding:"4px 10px", borderRadius:6, fontSize:11, cursor:"pointer", border:`1px solid ${C.border}`, background:"transparent", color:C.muted}}>Edit</button>
-            <button onClick={()=>deleteProduct(p.id)} style={{background:"transparent", border:"none", color:C.danger, cursor:"pointer", fontSize:16, lineHeight:1}}>×</button>
+            </span>
+            <Btn variant="ghost" style={{fontSize:12, padding:"4px 10px"}} onClick={()=>window.open(`https://admin.shopify.com/store/cocoislandmart/products/${p.id}`,"_blank")}>Edit</Btn>
+            <button style={{background:"transparent", border:"none", color:C.danger, cursor:"pointer", fontSize:18, opacity:.6}}>×</button>
           </div>
         </div>;
       })}
-      {!loadingProducts && filtered.length === 0 && <div style={{textAlign:"center", padding:40, color:C.muted, fontSize:13}}>No products found</div>}
     </div>
   </div>;
 
-  // EDIT VIEW
-  if (view === "edit") return <div>
+  if(view==="add") return <div>
     <div style={{display:"flex", alignItems:"center", gap:12, marginBottom:20}}>
-      <button onClick={()=>setView("list")} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18}}>←</button>
-      <Label zh="编辑产品" en="Edit Product"/>
-    </div>
-    {msg && <div style={{padding:"8px 12px", background:msg.includes("✅")?C.accentDim:C.dangerDim, borderRadius:6, fontSize:12, color:msg.includes("✅")?C.accent:C.danger, marginBottom:12}}>{msg}</div>}
-    <Card style={{marginBottom:12}}>
-      <Label zh="基本信息" en="Basic Info"/>
-      <div style={{display:"flex", flexDirection:"column", gap:10, marginTop:12}}>
-        <input value={editForm.title||""} onChange={e=>setEditForm(f=>({...f,title:e.target.value}))} placeholder="Product Title" style={inp}/>
-        <div style={{display:"flex", gap:8}}>
-          <select value={editForm.status||"draft"} onChange={e=>setEditForm(f=>({...f,status:e.target.value}))} style={{...inp, flex:1, cursor:"pointer"}}>
-            <option value="active">Active (Published)</option>
-            <option value="draft">Draft (Hidden)</option>
-            <option value="archived">Archived</option>
-          </select>
-          <input value={editForm.vendor||""} onChange={e=>setEditForm(f=>({...f,vendor:e.target.value}))} placeholder="Vendor/Brand" style={{...inp, flex:1}}/>
-        </div>
-        <input value={editForm.product_type||""} onChange={e=>setEditForm(f=>({...f,product_type:e.target.value}))} placeholder="Product Type/Category" style={inp}/>
-        <input value={editForm.tags||""} onChange={e=>setEditForm(f=>({...f,tags:e.target.value}))} placeholder="Tags (comma separated)" style={inp}/>
-      </div>
-    </Card>
-    <Card style={{marginBottom:12}}>
-      <Label zh="价格 & 库存" en="Price & Inventory"/>
-      <div style={{display:"flex", flexDirection:"column", gap:10, marginTop:12}}>
-        <div style={{display:"flex", gap:8}}>
-          <input value={editForm.price||""} onChange={e=>setEditForm(f=>({...f,price:e.target.value}))} placeholder="Price" style={{...inp, flex:1}}/>
-          <input value={editForm.compare_at_price||""} onChange={e=>setEditForm(f=>({...f,compare_at_price:e.target.value}))} placeholder="Compare at Price" style={{...inp, flex:1}}/>
-        </div>
-        <div style={{display:"flex", gap:8}}>
-          <input value={editForm.inventory_quantity??""} onChange={e=>setEditForm(f=>({...f,inventory_quantity:e.target.value}))} placeholder="Stock Quantity" style={{...inp, flex:1}} type="number"/>
-          <input value={editForm.weight||""} onChange={e=>setEditForm(f=>({...f,weight:e.target.value}))} placeholder="Weight (kg)" style={{...inp, flex:1}}/>
-        </div>
-        <div style={{display:"flex", gap:8}}>
-          <input value={editForm.sku||""} onChange={e=>setEditForm(f=>({...f,sku:e.target.value}))} placeholder="SKU" style={{...inp, flex:1, fontFamily:"monospace"}}/>
-          <input value={editForm.barcode||""} onChange={e=>setEditForm(f=>({...f,barcode:e.target.value}))} placeholder="UPC/Barcode" style={{...inp, flex:1, fontFamily:"monospace"}}/>
-        </div>
-      </div>
-    </Card>
-    <div style={{display:"flex", gap:10}}>
-      <Btn onClick={saveEdit} disabled={saving} style={{flex:1, padding:"11px"}}>{saving?"Saving...":"💾 Save Changes"}</Btn>
-      <Btn onClick={()=>setView("list")} variant="ghost">Cancel</Btn>
-    </div>
-  </div>;
-
-  // ADD VIEW
-  if (view === "add") return <div>
-    <div style={{display:"flex", alignItems:"center", gap:12, marginBottom:20}}>
-      <button onClick={()=>setView("list")} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18}}>←</button>
-      <Label zh="加新产品" en="Add New Product"/>
+      <button onClick={()=>setView("list")} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:20}}>←</button>
+      <Label zh="加新产品" en="Add Product"/>
     </div>
     <div style={{display:"flex", gap:6, marginBottom:16}}>
-      {[{id:"manual",zh:"Manual"},{id:"image",zh:"Image AI"},{id:"bulk",zh:"Bulk"}].map(m =>
-        <button key={m.id} onClick={()=>setMode(m.id)} style={{flex:1, padding:"8px", borderRadius:6, cursor:"pointer", fontSize:11, border:"none", background:mode===m.id?C.accent:C.surface, color:mode===m.id?"#0A0A0F":C.muted}}>{m.zh}</button>
+      {[{id:"manual",zh:"Manual"},{id:"image",zh:"Upload Image AI"},{id:"bulk",zh:"Bulk Upload"}].map(m =>
+        <button key={m.id} onClick={()=>setMode(m.id)} style={{flex:1, padding:"9px", borderRadius:6, cursor:"pointer", fontSize:13, border:`1px solid ${C.border}`, background:mode===m.id?C.accent:C.surface, color:mode===m.id?"#FFFFFF":C.muted}}>{m.zh}</button>
       )}
     </div>
     {mode==="manual" && <Card style={{marginBottom:12}}>
@@ -698,82 +585,69 @@ function ProductsTab() {
       <div style={{display:"flex", flexDirection:"column", gap:10, marginTop:12}}>
         {[
           {key:"name",ph:"Product Name *"},
-          {key:"category",ph:"Category"},
-          {key:"price",ph:"Price (e.g. 29.90)"},
-          {key:"comparePrice",ph:"Compare at Price (optional)"},
+          {key:"category",ph:"Category (e.g. Bags, Accessories)"},
+          {key:"price",ph:"Price (e.g. 99.90)"},
+          {key:"comparePrice",ph:"Compare at Price (original price, optional)"},
           {key:"stock",ph:"Stock Quantity"},
-          {key:"sku",ph:"SKU (auto-generate if blank)"},
-          {key:"barcode",ph:"UPC/Barcode (auto-generate if blank)"},
-          {key:"weight",ph:"Weight (e.g. 0.5)"},
+          {key:"sku",ph:"SKU (leave blank to auto-generate)"},
+          {key:"barcode",ph:"UPC/Barcode (leave blank to auto-generate)"},
+          {key:"weight",ph:"Weight (e.g. 0.5 kg)"},
           {key:"vendor",ph:"Vendor/Brand"},
           {key:"tags",ph:"Tags (comma separated)"},
           {key:"keywords",ph:"SEO Keywords"}
-        ].map(f => <input key={f.key} value={form[f.key]} onChange={e=>setForm(x=>({...x,[f.key]:e.target.value}))} placeholder={f.ph} style={inp}/>)}
+        ].map(f =>
+          <input key={f.key} value={form[f.key]} onChange={e=>setForm(x=>({...x,[f.key]:e.target.value}))} placeholder={f.ph} style={inp}/>
+        )}
       </div>
     </Card>}
     {mode==="image" && <Card style={{marginBottom:12}}>
-      <Label zh="上传图片" en="Upload Image"/>
+      <Label zh="上传产品图片" en="Upload Product Image"/>
       <div style={{marginTop:12}}>
         <label style={{display:"block", border:`2px dashed ${C.border}`, borderRadius:8, padding:"24px", textAlign:"center", cursor:"pointer"}}>
-          {imgPrev ? <img src={imgPrev} alt="preview" style={{maxHeight:160, maxWidth:"100%", borderRadius:6}}/> : <div><div style={{fontSize:28, marginBottom:8}}>📷</div><div style={{fontSize:12, color:C.muted}}>Click to upload</div></div>}
+          {imgPrev ? <img src={imgPrev} alt="preview" style={{maxHeight:160, maxWidth:"100%", borderRadius:6}}/> :
+            <div><div style={{fontSize:32, marginBottom:8}}>📷</div><div style={{fontSize:14, color:C.muted}}>Click to upload product image</div></div>}
           <input type="file" accept="image/*" onChange={handleImg} style={{display:"none"}}/>
         </label>
-        <div style={{marginTop:10}}><TA value={imgDesc} onChange={setImgDesc} placeholder="Additional notes..." rows={2}/></div>
+        <div style={{marginTop:10}}><TA value={imgDesc} onChange={setImgDesc} placeholder="Additional notes (optional)..." rows={2}/></div>
       </div>
     </Card>}
     {mode==="bulk" && <Card style={{marginBottom:12}}>
-      <Label zh="批量" en="Bulk Input"/>
-      <p style={{fontSize:11, color:C.muted, margin:"8px 0 10px"}}>One per line: Name, Category, Price</p>
-      <TA value={bulk} onChange={setBulk} placeholder={"Coconut Oil 500ml, Health, 29.90\nCoconut Water, Drinks, 5.90"} rows={6}/>
+      <Label zh="批量输入" en="Bulk Input"/>
+      <p style={{fontSize:13, color:C.muted, margin:"8px 0 10px"}}>One product per line: Product Name, Category, Price</p>
+      <TA value={bulk} onChange={setBulk} placeholder={"Canvas Bag, Bags, RM89\nLeather Wallet, Accessories, RM159"} rows={6}/>
     </Card>}
     <div style={{display:"flex", gap:10}}>
-      <Btn onClick={generateDesc} disabled={loading||(mode==="manual"&&!form.name)||(mode==="image"&&!imgFile)||(mode==="bulk"&&!bulk)} style={{flex:1, padding:"11px"}}>
-        {loading?"Generating...":"🤖 AI Generate Description"}
+      <Btn onClick={generateDesc} disabled={loading||(mode==="manual"&&!form.name)||(mode==="image"&&!imgFile)||(mode==="bulk"&&!bulk)} style={{flex:1, padding:"12px"}}>
+        {loading?"Generating...":"AI Generate Description"}
       </Btn>
+      {mode==="manual" && <Btn onClick={()=>{setView("list");}} variant="ghost">Cancel</Btn>}
     </div>
   </div>;
 
-  // GENERATED VIEW
-  if (view === "generated") return <div>
+  if(view==="generated") return <div>
     <div style={{display:"flex", alignItems:"center", gap:12, marginBottom:20}}>
-      <button onClick={()=>setView("add")} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:18}}>←</button>
+      <button onClick={()=>setView("add")} style={{background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:20}}>←</button>
       <Label zh="AI 生成结果" en="Generated Description"/>
     </div>
     <Card style={{marginBottom:12}}>
       <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14}}>
         <div style={{display:"flex", alignItems:"center", gap:8}}>
-          <div style={{width:7, height:7, borderRadius:"50%", background:C.accent, boxShadow:`0 0 6px ${C.accent}`}}/>
-          <span style={{fontSize:11, color:C.accent, letterSpacing:1}}>AI GENERATED</span>
+          <div style={{width:7, height:7, borderRadius:"50%", background:C.accent}}/>
+          <span style={{fontSize:13, color:C.accent, letterSpacing:1}}>AI GENERATED</span>
         </div>
         <CopyBtn text={gen}/>
       </div>
-      <p style={{fontSize:13, lineHeight:1.9, color:"#C8C5BF", margin:0, whiteSpace:"pre-wrap"}}>{gen}</p>
+      <p style={{fontSize:15, lineHeight:1.9, color:C.text, margin:0, whiteSpace:"pre-wrap"}}>{gen}</p>
     </Card>
     <div style={{display:"flex", gap:10}}>
-      <Btn onClick={uploadToShopify} disabled={loading} style={{flex:1, padding:"11px"}}>🚀 Upload to Shopify</Btn>
-      <Btn onClick={()=>setView("add")} variant="ghost">Regenerate</Btn>
+      <Btn onClick={uploadToShopify} disabled={loading} style={{flex:1, padding:"12px"}}>🚀 Upload to Shopify</Btn>
+      <Btn onClick={()=>setView("add")} variant="ghost">← Back</Btn>
+      <Btn onClick={generateDesc} variant="ghost" disabled={loading}>Regenerate</Btn>
     </div>
   </div>;
 }
 
-
 function SettingsTab() {
-  const [key, setKey] = useState(getApiKey());
-  const [saved, setSaved] = useState(false);
-  const [show, setShow] = useState(false);
-  const hasKey = getApiKey().length > 0;
-
-  function save() {
-    localStorage.setItem("coco_api_key", key);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  }
-
-  function clear() {
-    localStorage.removeItem("coco_api_key");
-    setKey("");
-  }
-
   return <div>
     <div style={{marginBottom:16}}>
       <Label zh="设置" en="Settings"/>
@@ -781,18 +655,18 @@ function SettingsTab() {
     <Card style={{marginBottom:12}}>
       <Label zh="Zoho Mail" en="Connected Accounts"/>
       <div style={{marginTop:12, display:"flex", flexDirection:"column", gap:8}}>
-        {["sales@cocoislandmart.com","pan@cocoislandmart.com"].map((email,i) => <div key={i} style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 12px", background:C.bg, borderRadius:6}}>
-          <span style={{fontSize:12, color:C.text}}>{email}</span>
-          <span style={{fontSize:11, padding:"2px 10px", borderRadius:20, background:C.accentDim, color:C.accent, border:"1px solid #1A4A35"}}>Connected</span>
+        {["sales@cocoislandmart.com","pan@cocoislandmart.com"].map((email,i) => <div key={i} style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 12px", background:C.bg, borderRadius:6}}>
+          <span style={{fontSize:14, color:C.text}}>{email}</span>
+          <span style={{fontSize:13, padding:"3px 12px", borderRadius:20, background:C.accentDim, color:C.accent, border:`1px solid #A7F3D0`}}>Connected</span>
         </div>)}
       </div>
     </Card>
     <Card>
       <Label zh="Cloudflare Worker" en="API Proxy"/>
-      <div style={{marginTop:10, fontSize:12, color:C.muted}}>
+      <div style={{marginTop:10, fontSize:14, color:C.muted}}>
         <p style={{marginBottom:6}}>Worker URL:</p>
-        <code style={{fontSize:11, color:C.accent, background:C.bg, padding:"6px 10px", borderRadius:4, display:"block"}}>{WORKER}</code>
-        <p style={{marginTop:8, fontSize:11}}>✅ Zoho Token auto-refresh enabled · ✅ Claude AI proxy enabled</p>
+        <code style={{fontSize:13, color:C.accent, background:C.bg, padding:"8px 12px", borderRadius:4, display:"block"}}>{WORKER}</code>
+        <p style={{marginTop:8, fontSize:13}}>✅ Zoho Token auto-refresh enabled · ✅ Claude AI proxy enabled · ✅ Shopify API connected</p>
       </div>
     </Card>
   </div>;
@@ -802,23 +676,23 @@ function App() {
   const [activeTab,setActiveTab] = useState("overview");
 
   return <div style={{minHeight:"100vh", background:C.bg, color:C.text}}>
-    <div style={{borderBottom:`1px solid ${C.border}`, padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between"}}>
+    <div style={{borderBottom:`1px solid ${C.border}`, padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", background:C.surface, boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
       <div>
         <div style={{display:"flex", alignItems:"center", gap:8}}>
-          <div style={{width:7, height:7, borderRadius:"50%", background:C.accent, boxShadow:`0 0 8px ${C.accent}`}}/>
-          <span style={{fontSize:10, letterSpacing:3, color:C.muted, textTransform:"uppercase"}}>Coco Island Mart · Store Manager</span>
+          <div style={{width:8, height:8, borderRadius:"50%", background:C.accent}}/>
+          <span style={{fontSize:12, letterSpacing:3, color:C.muted, textTransform:"uppercase"}}>Coco Island Mart · Store Manager</span>
         </div>
-        <h1 style={{fontSize:18, fontWeight:"normal", margin:"4px 0 0", fontFamily:"Georgia,serif", color:C.text}}>Shopify Dashboard</h1>
+        <h1 style={{fontSize:22, fontWeight:"normal", margin:"4px 0 0", fontFamily:"Georgia,serif", color:C.text}}>Shopify Dashboard</h1>
       </div>
-      <div style={{padding:"4px 12px", background:C.accentDim, border:`1px solid #1A4A35`, borderRadius:20, fontSize:10, color:C.accent, letterSpacing:1}}>LIVE</div>
+      <div style={{padding:"5px 14px", background:C.accentDim, border:`1px solid #A7F3D0`, borderRadius:20, fontSize:12, color:C.accent, letterSpacing:1}}>LIVE</div>
     </div>
-    <div style={{display:"flex", borderBottom:`1px solid ${C.border}`, padding:"0 20px", overflowX:"auto"}}>
+    <div style={{display:"flex", borderBottom:`1px solid ${C.border}`, padding:"0 20px", overflowX:"auto", background:C.surface}}>
       {tabs.map(t => <button key={t.id} onClick={()=>setActiveTab(t.id)}
-        style={{padding:"12px 14px", background:"transparent", border:"none", borderBottom:`2px solid ${activeTab===t.id?C.accent:"transparent"}`, color:activeTab===t.id?C.accent:C.muted, fontSize:11, cursor:"pointer", transition:"all .15s", whiteSpace:"nowrap"}}>
+        style={{padding:"14px 16px", background:"transparent", border:"none", borderBottom:`2px solid ${activeTab===t.id?C.accent:"transparent"}`, color:activeTab===t.id?C.accent:C.muted, fontSize:13, cursor:"pointer", transition:"all .15s", whiteSpace:"nowrap"}}>
         <span style={{marginRight:5}}>{t.icon}</span>{t.zh}
       </button>)}
     </div>
-    <div style={{padding:20, maxWidth: activeTab==="email"?1000:640, margin:"0 auto"}}>
+    <div style={{padding:20, maxWidth: activeTab==="email"?1100:680, margin:"0 auto"}}>
       {activeTab==="overview" && <Overview setTab={setActiveTab}/>}
       {activeTab==="email" && <EmailTab/>}
       {activeTab==="delivery" && <DeliveryTab/>}
