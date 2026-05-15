@@ -922,15 +922,62 @@ function InvoiceTab() {
       const clean = result.replace(/```json|```/g,"").trim();
       const data = JSON.parse(clean);
       setParsed(data);
-      matchWithShopify(data);
+      await matchAndEnrich(data);
       setStep(2);
     } catch(e) { alert("❌ Failed to parse invoice: " + e.message); }
     setParsing(false);
   }
-  function matchWithShopify(data) {
-    setMatching(true);
+  async function matchAndEnrich(data) {
+    // First do the basic matching synchronously
+    const items = buildMatchedItems(data);
+    setMatched(items);
+
+    // Then enrich new products in background (parallel)
+    const enriched = [...items];
+    const newItems = enriched.filter(m => m.isNew);
+    if (!newItems.length) return;
+
+    // Process in parallel batches of 3
+    for (let i = 0; i < newItems.length; i += 3) {
+      const batch = newItems.slice(i, i+3);
+      await Promise.all(batch.map(async (item) => {
+        const idx = enriched.indexOf(item);
+        try {
+          // Generate description + tags + product_type in one call
+          const enrichResult = await callClaude({
+            system: `You are an e-commerce product expert for Coco Island Mart (Asian grocery store). Given a product name, return ONLY a JSON object (no markdown):
+{
+  "product_type": "Tea|Coffee|Bubble Tea|Snacks|Instant Food|Soup & Broth|Beverages|Health Supplements|Dried Goods|Sauces & Condiments|Skincare & Beauty|Household|Gift Cards|Other",
+  "tags": "tag1, tag2, tag3, tag4, tag5",
+  "body_html": "<p>2-3 sentence product description in English highlighting key benefits and features.</p>",
+  "image_url": "a real direct image URL ending in .jpg/.png/.webp for this exact product from Amazon, manufacturer, or major retailer, or empty string if unsure"
+}`,
+            userContent: `Product: ${item.description}\nSKU: ${item.sku||""}`,
+            max_tokens: 600
+          });
+          const cleanResult = enrichResult.replace(/```json|```/g,"").trim();
+          const enrichData = JSON.parse(cleanResult);
+          enriched[idx] = {
+            ...enriched[idx],
+            product_type: enrichData.product_type || "",
+            tags: enrichData.tags || "",
+            body_html: enrichData.body_html || "",
+            imageUrl: enrichData.image_url || "",
+            enriching: false,
+          };
+          setMatched([...enriched]);
+        } catch(e) {
+          console.error("Enrich failed for", item.description, e);
+          enriched[idx] = {...enriched[idx], enriching: false};
+          setMatched([...enriched]);
+        }
+      }));
+    }
+  }
+
+  function buildMatchedItems(data) {
     const totalWeight = (data.items||[]).reduce((a,x)=>a+(x.weight_kg||0.3)*x.quantity, 0);
-    const items = (data.items || []).map(item => {
+    return (data.items || []).map(item => {
       let shopifyProduct = null, shopifyVariant = null;
       for (const p of shopifyProducts) {
         for (const v of (p.variants||[])) {
@@ -964,13 +1011,12 @@ function InvoiceTab() {
         currentPrice: currentPrice.toFixed(2),
         currentStock, newStock: currentStock + (item.quantity||0),
         usePrice: suggestedPrice.toFixed(2),
-        include: true, // include all by default (both new and existing)
-        imageUrl: "", // will be searched
-        imageSearching: false,
+        include: true,
+        imageUrl: "", imageSearching: false,
+        product_type: "", tags: "", body_html: "",
+        enriching: isNew, // show loading state for new products
       };
     });
-    setMatched(items);
-    setMatching(false);
   }
 
   function updateItem(idx, key, val) {
@@ -1004,11 +1050,14 @@ function InvoiceTab() {
     for (const item of toProcess) {
       try {
         if (item.isNew) {
-          // CREATE new product
+          // CREATE new product with enriched data
           const productPayload = {
             title: item.description,
             status: "draft",
             vendor: parsed?.supplier || "Coco Island Mart",
+            body_html: item.body_html || "",
+            product_type: item.product_type || "",
+            tags: item.tags || "",
             variants: [{
               sku: item.sku || "",
               price: item.usePrice,
@@ -1018,7 +1067,6 @@ function InvoiceTab() {
               weight_unit: "kg"
             }]
           };
-          // Add image if found
           if (item.imageUrl && item.imageUrl.startsWith("http")) {
             productPayload.images = [{src: item.imageUrl}];
           }
@@ -1175,17 +1223,27 @@ function InvoiceTab() {
 
             {/* Image search for new products */}
             {item.isNew && <div style={{padding:"10px 12px", background:"rgba(255,255,255,0.7)", borderRadius:8}}>
-              <div style={{fontSize:12, color:C.muted, marginBottom:8}}>产品图片（网络搜索）</div>
-              <div style={{display:"flex", gap:8, alignItems:"center"}}>
-                {item.imageUrl && item.imageUrl.startsWith("http") &&
-                  <img src={item.imageUrl} alt="" style={{width:56, height:56, objectFit:"cover", borderRadius:6, border:`1px solid ${C.border}`}}
-                    onError={e=>{e.target.style.display="none";}}/>}
-                <input value={item.imageUrl} onChange={e=>updateItem(idx,"imageUrl",e.target.value)} placeholder="图片URL（可手动填写）" style={{flex:1, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"7px 10px", color:C.text, fontSize:13, outline:"none"}}/>
-                <Btn variant="ghost" style={{fontSize:12, padding:"6px 12px", whiteSpace:"nowrap"}} disabled={item.imageSearching}
-                  onClick={()=>searchImageForItem(idx, item.description)}>
-                  {item.imageSearching?"搜索中...":"🔍 搜图"}
-                </Btn>
-              </div>
+              {item.enriching ? <div style={{display:"flex", alignItems:"center", gap:8, padding:"8px 0"}}>
+                <div style={{width:8, height:8, borderRadius:"50%", background:C.blue, animation:"pulse 1s infinite"}}/>
+                <span style={{fontSize:13, color:C.blue}}>AI 正在生成描述、分类、标签和图片...</span>
+              </div> : <>
+                {item.product_type && <div style={{fontSize:12, color:C.purple, marginBottom:6}}>
+                  分类: <strong>{item.product_type}</strong>
+                  {item.tags && <span style={{color:C.muted}}> · 标签: {item.tags}</span>}
+                </div>}
+                {item.body_html && <div style={{fontSize:12, color:C.muted, marginBottom:8, padding:"6px 8px", background:C.bg, borderRadius:6}} dangerouslySetInnerHTML={{__html:item.body_html}}/>}
+                <div style={{fontSize:12, color:C.muted, marginBottom:6}}>产品图片</div>
+                <div style={{display:"flex", gap:8, alignItems:"center"}}>
+                  {item.imageUrl && item.imageUrl.startsWith("http") &&
+                    <img src={item.imageUrl} alt="" style={{width:56, height:56, objectFit:"cover", borderRadius:6, border:`1px solid ${C.border}`}}
+                      onError={e=>{e.target.style.display="none";}}/>}
+                  <input value={item.imageUrl} onChange={e=>updateItem(idx,"imageUrl",e.target.value)} placeholder="图片URL（可手动填写）" style={{flex:1, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"7px 10px", color:C.text, fontSize:13, outline:"none"}}/>
+                  <Btn variant="ghost" style={{fontSize:12, padding:"6px 12px", whiteSpace:"nowrap"}} disabled={item.imageSearching}
+                    onClick={()=>searchImageForItem(idx, item.description)}>
+                    {item.imageSearching?"搜索中...":"🔍 重搜"}
+                  </Btn>
+                </div>
+              </>}
             </div>}
           </Card>)}
         </div>
