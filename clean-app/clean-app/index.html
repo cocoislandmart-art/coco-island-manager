@@ -70,15 +70,25 @@ Return ONLY a valid JSON object (no markdown, no explanation) in this exact form
       "description": "product name",
       "quantity": 1,
       "unit_cost": 0.00,
-      "weight_kg": 0.0
+      "weight_kg": 0.0,
+      "units_per_case": 1
     }
   ]
 }
 Rules:
 - shipping_cost: extract the shipping/freight line if present, otherwise 0
-- weight_kg: estimate from product description if not stated (typical small item = 0.3kg)
+- weight_kg: total weight of one case/box. Estimate from product description if not stated
 - sku: extract exact SKU/item code from invoice
-- unit_cost: cost per single unit in USD`;
+- unit_cost: cost per CASE (as shown on invoice)
+- quantity: number of CASES ordered (as shown on invoice)
+- units_per_case: number of individual sellable units per case. Extract from product name patterns like:
+  * "6btls*480ml" → 6
+  * "10packs*1.65L" → 10
+  * "4btls*4kg" → 4
+  * "16packs*3cans*20g" → 48 (16×3)
+  * "50bags*400g" → 50
+  * "6cans*1kg" → 6
+  * If no pattern found, default to 1`;
 
 const AUTO_CLASSIFY_SYSTEM = `You are an e-commerce product categorization expert for Coco Island Mart, an Asian grocery and lifestyle store.
 Given a list of product titles, classify each one into a product_type and generate relevant tags.
@@ -436,6 +446,8 @@ function ProductsTab() {
 
   useEffect(() => { loadProducts(); }, []);
 
+  const [sortBy, setSortBy] = useState("newest");
+
   async function loadProducts() {
     setLoading(true);
     try {
@@ -639,6 +651,14 @@ function ProductsTab() {
     const ms = filterStatus==="all" || p.status===filterStatus;
     const mq = !search || p.title?.toLowerCase().includes(search.toLowerCase()) || p.variants?.[0]?.sku?.toLowerCase().includes(search.toLowerCase());
     return ms && mq;
+  }).sort((a,b) => {
+    if (sortBy==="newest") return new Date(b.created_at)-new Date(a.created_at);
+    if (sortBy==="oldest") return new Date(a.created_at)-new Date(b.created_at);
+    if (sortBy==="title") return a.title.localeCompare(b.title);
+    if (sortBy==="price_high") return parseFloat(b.variants?.[0]?.price||0)-parseFloat(a.variants?.[0]?.price||0);
+    if (sortBy==="price_low") return parseFloat(a.variants?.[0]?.price||0)-parseFloat(b.variants?.[0]?.price||0);
+    if (sortBy==="stock_low") return (a.variants?.[0]?.inventory_quantity||0)-(b.variants?.[0]?.inventory_quantity||0);
+    return 0;
   });
 
   // ── STALE DRAFT VIEW ──
@@ -756,6 +776,14 @@ function ProductsTab() {
 
     <div style={{display:"flex", gap:8, marginBottom:12}}>
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search products..." style={{flex:1, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"9px 12px", color:C.text, fontSize:14, outline:"none"}}/>
+      <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"9px 12px", color:C.text, fontSize:14, outline:"none"}}>
+        <option value="newest">最新优先</option>
+        <option value="oldest">最旧优先</option>
+        <option value="title">名称 A-Z</option>
+        <option value="price_high">价格高→低</option>
+        <option value="price_low">价格低→高</option>
+        <option value="stock_low">库存低→高</option>
+      </select>
       <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"9px 12px", color:C.text, fontSize:14, outline:"none"}}>
         <option value="all">All Status</option>
         <option value="active">Active</option>
@@ -784,6 +812,7 @@ function ProductsTab() {
                 {v.sku && <span style={{fontSize:12, color:C.muted}}>SKU: {v.sku}</span>}
                 {p.product_type && <span style={{fontSize:12, padding:"1px 8px", borderRadius:10, background:C.purpleDim, color:C.purple, border:`1px solid #DDD6FE`}}>{p.product_type}</span>}
                 {isStale && <span style={{fontSize:12, color:C.danger}}>⚠ 草稿 {daysOld}天</span>}
+                <span style={{fontSize:11, color:C.muted}}>{new Date(p.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
               </div>
             </div>
           </div>
@@ -987,16 +1016,27 @@ function InvoiceTab() {
         }
         if (shopifyProduct) break;
       }
-      const itemWeight = (item.weight_kg||0.3) * item.quantity;
+
+      // Case → individual unit breakdown
+      const unitsPerCase = item.units_per_case || 1;
+      const totalCases = item.quantity || 1;
+      const totalIndividualUnits = totalCases * unitsPerCase;
+
+      const itemWeight = (item.weight_kg||0.3) * totalCases;
       const weightRatio = totalWeight > 0 ? itemWeight/totalWeight : 1/(data.items||[]).length;
       let shippingCost = 0;
       if (shippingMode === "invoice") shippingCost = (data.shipping_cost||0) * weightRatio;
       else if (shippingMode === "manual") shippingCost = (parseFloat(manualShipping)||0) * weightRatio;
       else shippingCost = estimateShipping(carrier, totalWeight, "") * weightRatio;
 
-      const unitShipping = item.quantity > 0 ? shippingCost / item.quantity : 0;
-      const totalCostPerUnit = (item.unit_cost||0) + unitShipping;
+      // Per-unit cost calculation
+      const costPerCase = item.unit_cost || 0;
+      const shippingPerCase = totalCases > 0 ? shippingCost / totalCases : 0;
+      const costPerUnit = unitsPerCase > 0 ? costPerCase / unitsPerCase : costPerCase;
+      const shippingPerUnit = unitsPerCase > 0 ? shippingPerCase / unitsPerCase : shippingPerCase;
+      const totalCostPerUnit = costPerUnit + shippingPerUnit;
       const suggestedPrice = Math.ceil(totalCostPerUnit * MARKUP * 100) / 100;
+
       const currentPrice = shopifyVariant ? parseFloat(shopifyVariant.price||0) : 0;
       const currentStock = shopifyVariant ? (shopifyVariant.inventory_quantity||0) : 0;
       const isNew = !shopifyVariant;
@@ -1005,16 +1045,22 @@ function InvoiceTab() {
         ...item,
         shopifyProduct, shopifyVariant,
         matched: !isNew, isNew,
-        unitShipping: unitShipping.toFixed(3),
+        unitsPerCase,
+        totalCases,
+        totalIndividualUnits,
+        costPerCase: costPerCase.toFixed(2),
+        costPerUnit: costPerUnit.toFixed(2),
+        shippingPerUnit: shippingPerUnit.toFixed(3),
         totalCostPerUnit: totalCostPerUnit.toFixed(2),
         suggestedPrice: suggestedPrice.toFixed(2),
         currentPrice: currentPrice.toFixed(2),
-        currentStock, newStock: currentStock + (item.quantity||0),
+        currentStock,
+        newStock: currentStock + totalIndividualUnits,
         usePrice: suggestedPrice.toFixed(2),
         include: true,
         imageUrl: "", imageSearching: false,
         product_type: "", tags: "", body_html: "",
-        enriching: isNew, // show loading state for new products
+        enriching: isNew,
       };
     });
   }
@@ -1194,29 +1240,56 @@ function InvoiceTab() {
                 </div>
                 <div style={{display:"flex", gap:12, fontSize:13, color:C.muted, flexWrap:"wrap"}}>
                   <span>SKU: <strong style={{color:C.text}}>{item.sku||"—"}</strong></span>
-                  <span>数量: <strong style={{color:C.text}}>{item.quantity}</strong></span>
-                  <span>来货价: <strong style={{color:C.text}}>${item.unit_cost}</strong></span>
-                  <span>分摊运费: <strong style={{color:C.blue}}>${item.unitShipping}</strong></span>
-                  <span>成本/件: <strong style={{color:C.text}}>${item.totalCostPerUnit}</strong></span>
+                  <span>箱数: <strong style={{color:C.text}}>{item.totalCases}</strong></span>
+                  <span>每箱: <strong style={{color:C.blue}}>{item.unitsPerCase} 件</strong></span>
+                  <span>总件数: <strong style={{color:C.accent}}>{item.totalIndividualUnits}</strong></span>
+                  <span>箱价: <strong style={{color:C.text}}>${item.costPerCase}</strong></span>
+                  <span>件成本: <strong style={{color:C.text}}>${item.costPerUnit}</strong></span>
+                  <span>运费/件: <strong style={{color:C.blue}}>${item.shippingPerUnit}</strong></span>
                 </div>
               </div>
             </div>
 
-            {/* Price + Stock row */}
-            <div style={{display:"flex", gap:12, alignItems:"flex-start", padding:"10px 12px", background:"rgba(255,255,255,0.7)", borderRadius:8, marginBottom:item.isNew?10:0}}>
-              <div style={{flex:1}}>
+            {/* Price + Stock + Units per case */}
+            <div style={{display:"flex", gap:12, alignItems:"flex-start", padding:"10px 12px", background:"rgba(255,255,255,0.7)", borderRadius:8, marginBottom:item.isNew?10:0, flexWrap:"wrap"}}>
+              <div>
+                <div style={{fontSize:12, color:C.muted, marginBottom:4}}>每箱件数</div>
+                <div style={{display:"flex", alignItems:"center", gap:6}}>
+                  <input type="number" value={item.unitsPerCase} min="1"
+                    onChange={e=>{
+                      const upc = parseInt(e.target.value)||1;
+                      const costPerUnit = parseFloat(item.costPerCase)/upc;
+                      const shpPerUnit = parseFloat(item.shippingPerUnit||0);
+                      const total = costPerUnit + shpPerUnit;
+                      const price = (Math.ceil(total*MARKUP*100)/100).toFixed(2);
+                      setMatched(prev=>prev.map((m,i)=>i===idx?{...m,
+                        unitsPerCase:upc,
+                        totalIndividualUnits:item.totalCases*upc,
+                        newStock:item.currentStock+item.totalCases*upc,
+                        costPerUnit:costPerUnit.toFixed(2),
+                        totalCostPerUnit:(costPerUnit+shpPerUnit).toFixed(2),
+                        suggestedPrice:price, usePrice:price
+                      }:m));
+                    }}
+                    style={{width:70, background:C.surface, border:`1px solid ${C.blue}`, borderRadius:6, padding:"6px 8px", color:C.blue, fontSize:14, outline:"none", fontWeight:500}}/>
+                  <span style={{fontSize:12, color:C.muted}}>件/箱 → 总 {item.totalIndividualUnits} 件</span>
+                </div>
+              </div>
+              <div>
                 <div style={{fontSize:12, color:C.muted, marginBottom:4}}>售价 (×{MARKUP})</div>
                 <div style={{display:"flex", alignItems:"center", gap:6}}>
                   <span style={{fontSize:13, color:C.muted}}>$</span>
-                  <input type="number" value={item.usePrice} onChange={e=>updateItem(idx,"usePrice",e.target.value)} step="0.01" style={{width:90, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"6px 8px", color:C.text, fontSize:14, outline:"none"}}/>
+                  <input type="number" value={item.usePrice} onChange={e=>updateItem(idx,"usePrice",e.target.value)} step="0.01"
+                    style={{width:90, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"6px 8px", color:C.text, fontSize:14, outline:"none"}}/>
                   {!item.isNew && <span style={{fontSize:12, color:C.muted}}>现价: ${item.currentPrice}</span>}
                 </div>
               </div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:12, color:C.muted, marginBottom:4}}>{item.isNew?"入库数量":"新库存"}</div>
+              <div>
+                <div style={{fontSize:12, color:C.muted, marginBottom:4}}>{item.isNew?"入库件数":"新库存"}</div>
                 <div style={{display:"flex", alignItems:"center", gap:6}}>
-                  <input type="number" value={item.newStock} onChange={e=>updateItem(idx,"newStock",parseInt(e.target.value)||0)} style={{width:80, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"6px 8px", color:C.text, fontSize:14, outline:"none"}}/>
-                  {!item.isNew && <span style={{fontSize:12, color:C.muted}}>{item.currentStock}+{item.quantity}={item.newStock}</span>}
+                  <input type="number" value={item.newStock} onChange={e=>updateItem(idx,"newStock",parseInt(e.target.value)||0)}
+                    style={{width:80, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"6px 8px", color:C.text, fontSize:14, outline:"none"}}/>
+                  {!item.isNew && <span style={{fontSize:12, color:C.muted}}>{item.currentStock}+{item.totalIndividualUnits}={item.newStock}</span>}
                 </div>
               </div>
             </div>
@@ -1233,16 +1306,21 @@ function InvoiceTab() {
                 </div>}
                 {item.body_html && <div style={{fontSize:12, color:C.muted, marginBottom:8, padding:"6px 8px", background:C.bg, borderRadius:6}} dangerouslySetInnerHTML={{__html:item.body_html}}/>}
                 <div style={{fontSize:12, color:C.muted, marginBottom:6}}>产品图片</div>
-                <div style={{display:"flex", gap:8, alignItems:"center"}}>
+                <div style={{display:"flex", gap:8, alignItems:"center", flexWrap:"wrap"}}>
                   {item.imageUrl && item.imageUrl.startsWith("http") &&
                     <img src={item.imageUrl} alt="" style={{width:56, height:56, objectFit:"cover", borderRadius:6, border:`1px solid ${C.border}`}}
                       onError={e=>{e.target.style.display="none";}}/>}
-                  <input value={item.imageUrl} onChange={e=>updateItem(idx,"imageUrl",e.target.value)} placeholder="图片URL（可手动填写）" style={{flex:1, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"7px 10px", color:C.text, fontSize:13, outline:"none"}}/>
-                  <Btn variant="ghost" style={{fontSize:12, padding:"6px 12px", whiteSpace:"nowrap"}} disabled={item.imageSearching}
+                  <input value={item.imageUrl} onChange={e=>updateItem(idx,"imageUrl",e.target.value)} placeholder="粘贴图片URL..." style={{flex:1, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"7px 10px", color:C.text, fontSize:13, outline:"none", minWidth:120}}/>
+                  <Btn variant="ghost" style={{fontSize:12, padding:"6px 10px", whiteSpace:"nowrap"}} disabled={item.imageSearching}
                     onClick={()=>searchImageForItem(idx, item.description)}>
-                    {item.imageSearching?"搜索中...":"🔍 重搜"}
+                    {item.imageSearching?"搜索中...":"🔍 AI搜图"}
+                  </Btn>
+                  <Btn variant="ghost" style={{fontSize:12, padding:"6px 10px", whiteSpace:"nowrap", color:C.blue}}
+                    onClick={()=>window.open(`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(item.description)}`, "_blank")}>
+                    🌐 Google图片
                   </Btn>
                 </div>
+                <div style={{fontSize:11, color:C.muted, marginTop:4}}>💡 在 Google 图片中找到合适图片 → 右键"复制图片地址" → 粘贴到上方输入框</div>
               </>}
             </div>}
           </Card>)}
